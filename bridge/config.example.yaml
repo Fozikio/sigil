@@ -1,0 +1,32 @@
+sigil_url: https://ntfy.idapixl.com
+bridge_port: 3848
+sigil_topic: paco
+
+heartbeat:
+  stale_threshold_seconds: 300
+  check_interval_seconds: 60
+
+cost_ceilings:
+  default_per_session_usd: 3.0
+  warning_threshold: 0.9
+
+commands:
+  - label: Start PACO
+    command: start
+    project: paco
+    icon: "\U0001F680"
+  - label: Start Cortex
+    command: start
+    project: cortex
+    icon: "\U0001F9E0"
+  - label: Start Site
+    command: start
+    project: site
+    icon: "\U0001F310"
+  - label: Health Check
+    command: health
+    icon: "\U0001F48A"
+  - label: Pause All
+    command: pause_all
+    icon: "\u270B"
+    confirm: true
