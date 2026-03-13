@@ -7,7 +7,7 @@ async function main(): Promise<void> {
 
   const port = config.bridge_port;
   server.listen(port, () => {
-    console.log(`[sigil-bridge] listening on port ${port}`);
+    console.error(`[sigil-bridge] listening on port ${port}`);
   });
 }
 

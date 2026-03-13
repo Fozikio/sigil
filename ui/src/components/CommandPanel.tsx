@@ -8,36 +8,38 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import type { CommandButton } from "@/hooks/useBridge";
 
-interface Command {
-  label: string;
-  variant?: "default" | "secondary" | "destructive" | "outline";
-  confirm?: boolean;
+interface Props {
+  commands: CommandButton[];
+  onCommand: (command: string, project?: string) => Promise<void>;
 }
 
-const commands: Command[] = [
-  { label: "Start PACO" },
-  { label: "Start Cortex" },
-  { label: "Start Site" },
-  { label: "Health Check", variant: "secondary" },
-  { label: "Pause All", variant: "destructive", confirm: true },
+// Default commands shown when bridge hasn't connected yet
+const fallbackCommands: CommandButton[] = [
+  { label: "Start PACO", command: "start", project: "paco", icon: "\u{1F680}" },
+  { label: "Start Cortex", command: "start", project: "cortex", icon: "\u{1F9E0}" },
+  { label: "Start Site", command: "start", project: "site", icon: "\u{1F310}" },
+  { label: "Health Check", command: "health", icon: "\u{1F48A}" },
+  { label: "Pause All", command: "pause_all", icon: "\u270B", confirm: true },
 ];
 
-export function CommandPanel() {
-  const [confirmTarget, setConfirmTarget] = useState<string | null>(null);
+export function CommandPanel({ commands, onCommand }: Props) {
+  const [confirmTarget, setConfirmTarget] = useState<CommandButton | null>(null);
+  const cmds = commands.length > 0 ? commands : fallbackCommands;
 
-  function handleCommand(cmd: Command) {
+  function handleClick(cmd: CommandButton) {
     if (cmd.confirm) {
-      setConfirmTarget(cmd.label);
+      setConfirmTarget(cmd);
       return;
     }
-    // TODO: dispatch command
-    console.log(`Command: ${cmd.label}`);
+    onCommand(cmd.command, cmd.project);
   }
 
   function confirmAction() {
-    // TODO: dispatch confirmed command
-    console.log(`Confirmed: ${confirmTarget}`);
+    if (confirmTarget) {
+      onCommand(confirmTarget.command, confirmTarget.project);
+    }
     setConfirmTarget(null);
   }
 
@@ -45,15 +47,15 @@ export function CommandPanel() {
     <>
       <div className="px-3 pb-3 pt-2 border-t border-border">
         <div className="grid grid-cols-3 gap-2">
-          {commands.map((cmd) => (
+          {cmds.map((cmd) => (
             <Button
               key={cmd.label}
-              variant={cmd.variant ?? "default"}
+              variant={cmd.confirm ? "destructive" : "default"}
               size="sm"
               className="text-xs h-9"
-              onClick={() => handleCommand(cmd)}
+              onClick={() => handleClick(cmd)}
             >
-              {cmd.label}
+              {cmd.icon ? `${cmd.icon} ` : ""}{cmd.label}
             </Button>
           ))}
         </div>
@@ -65,9 +67,9 @@ export function CommandPanel() {
       >
         <DialogContent className="max-w-xs">
           <DialogHeader>
-            <DialogTitle>Confirm: {confirmTarget}</DialogTitle>
+            <DialogTitle>Confirm: {confirmTarget?.label}</DialogTitle>
             <DialogDescription>
-              This will pause all running services. Are you sure?
+              This action cannot be undone. Are you sure?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
