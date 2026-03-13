@@ -6,11 +6,11 @@ import type { Request, Response } from 'express';
 import type { AgentMessage, BridgeConfig } from './types.js';
 import { handleWebhook } from './handlers/webhook.js';
 import { handleGesture } from './handlers/gesture.js';
-import { handleCommand } from './handlers/command.js';
+import { handleCommand, type CommandContext } from './handlers/command.js';
 import { HeartbeatMonitor } from './monitors/heartbeat.js';
 import { CostMonitor } from './monitors/cost.js';
 import { TimeoutManager } from './monitors/timeout.js';
-import { SigilClient } from './integrations/sigil-client.js';
+import { SigilClient, type NtfyEvent } from './integrations/sigil-client.js';
 import { CortexClient } from './integrations/cortex.js';
 import { enrichMessage } from './enrichment.js';
 
@@ -43,6 +43,9 @@ export function createBridgeServer(config: BridgeConfig): express.Express {
   const sigil = new SigilClient(config);
   const cortex = new CortexClient(config);
 
+  // Command handler context (built once, shared across requests)
+  const commandCtx: CommandContext = { config, sigil, cortex };
+
   // SSE clients for live dashboard updates
   const sseClients: SSEClient[] = [];
 
@@ -56,6 +59,39 @@ export function createBridgeServer(config: BridgeConfig): express.Express {
       }
     }
   }
+
+  // --- Subscribe to ntfy topic — relay all messages to dashboard SSE clients ---
+  sigil.subscribe(config.sigil_topic, (event: NtfyEvent) => {
+    const isHeartbeat =
+      event.message.startsWith('heartbeat:') ||
+      (() => {
+        try {
+          const parsed = JSON.parse(event.message) as { type?: string };
+          return parsed.type === 'heartbeat';
+        } catch {
+          return false;
+        }
+      })();
+
+    if (isHeartbeat) {
+      // Route to heartbeat monitor via the existing webhook handler path
+      handleWebhook(
+        { type: 'heartbeat', message: event.message, session_id: event.id },
+        { config, heartbeat, cost, timeout },
+      );
+      broadcast('sessions', heartbeat.getSessions());
+    } else {
+      broadcast('notification', {
+        id: event.id,
+        type: 'info',
+        message: event.message,
+        title: event.title,
+        tags: event.tags,
+        source: 'ntfy',
+        timestamp: new Date(event.time * 1000).toISOString(),
+      });
+    }
+  });
 
   // --- SSE endpoint for live dashboard updates ---
   app.get('/events', (req: Request, res: Response) => {
@@ -118,7 +154,7 @@ export function createBridgeServer(config: BridgeConfig): express.Express {
 
   // --- Command from dashboard UI ---
   app.post('/command', async (req: Request, res: Response) => {
-    const result = await handleCommand(req.body, config);
+    const result = await handleCommand(req.body, commandCtx);
     broadcast('command_result', result);
 
     // Log to cortex

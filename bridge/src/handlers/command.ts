@@ -1,4 +1,6 @@
 import type { CommandMessage, BridgeConfig } from '../types.js';
+import type { SigilClient } from '../integrations/sigil-client.js';
+import type { CortexClient } from '../integrations/cortex.js';
 
 export interface CommandResult {
   ok: boolean;
@@ -6,10 +8,17 @@ export interface CommandResult {
   message: string;
 }
 
+export interface CommandContext {
+  config: BridgeConfig;
+  sigil: SigilClient;
+  cortex: CortexClient;
+}
+
 /**
  * Parses and dispatches command button presses from the dashboard.
  */
-export async function handleCommand(body: unknown, _config: BridgeConfig): Promise<CommandResult> {
+export async function handleCommand(body: unknown, ctx: CommandContext): Promise<CommandResult> {
+  const { config, sigil } = ctx;
   const cmd = body as CommandMessage;
   if (!cmd || cmd.type !== 'command' || !cmd.command) {
     return { ok: false, command: '', message: 'Invalid command message' };
@@ -17,25 +26,73 @@ export async function handleCommand(body: unknown, _config: BridgeConfig): Promi
 
   switch (cmd.command) {
     case 'start': {
-      // TODO: Trigger agent session start via configured runner
-      // - Use ntfy to publish a start command to the agent's topic
-      // - Or invoke the agent-runner directly via HTTP
-      return { ok: true, command: cmd.command, message: `Start requested for ${cmd.project ?? 'default'}` };
+      const project = cmd.project ?? 'paco';
+      const ntfyMessage = `start:${project}`;
+      try {
+        await sigil.publish(config.sigil_topic, {
+          type: 'command_result',
+          message: ntfyMessage,
+          title: `Start: ${project}`,
+          tags: ['arrow_forward'],
+        });
+        return { ok: true, command: cmd.command, message: `Start requested for ${project}` };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        return { ok: false, command: cmd.command, message: `Start failed: ${msg}` };
+      }
     }
 
     case 'health': {
-      // TODO: Run health check against configured endpoints
-      // - Check sigil server, cortex API, VPS
-      return { ok: true, command: cmd.command, message: 'Health check initiated' };
+      const results: string[] = ['Bridge: ok'];
+
+      // Check cortex
+      if (config.cortex_url && config.cortex_token) {
+        try {
+          const res = await fetch(`${config.cortex_url}/health`, {
+            headers: { 'x-cortex-token': config.cortex_token },
+            signal: AbortSignal.timeout(10000),
+          });
+          results.push(`Cortex: ${res.ok ? 'ok' : `${res.status}`}`);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'error';
+          results.push(`Cortex: ${msg} (cold start?)`);
+        }
+      } else {
+        results.push('Cortex: not configured');
+      }
+
+      // Check ntfy
+      try {
+        const res = await fetch(`${config.sigil_url}/v1/health`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        results.push(`ntfy: ${res.ok ? 'ok' : `${res.status}`}`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'error';
+        results.push(`ntfy: ${msg}`);
+      }
+
+      const summary = results.join(' | ');
+      return { ok: true, command: cmd.command, message: summary };
     }
 
     case 'pause_all': {
-      // TODO: Publish pause signal to all active agent sessions
-      return { ok: true, command: cmd.command, message: 'Pause signal sent to all sessions' };
+      try {
+        await sigil.publish(config.sigil_topic, {
+          type: 'command_result',
+          message: 'pause',
+          title: 'Pause all sessions',
+          tags: ['pause_button'],
+          priority: 'high',
+        });
+        return { ok: true, command: cmd.command, message: 'Pause signal sent to all sessions' };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        return { ok: false, command: cmd.command, message: `Pause failed: ${msg}` };
+      }
     }
 
     default: {
-      // TODO: Support custom commands via config
       return { ok: false, command: cmd.command, message: `Unknown command: ${cmd.command}` };
     }
   }
