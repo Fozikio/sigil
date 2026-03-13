@@ -1,4 +1,7 @@
 import express from 'express';
+import { existsSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { Request, Response } from 'express';
 import type { AgentMessage, BridgeConfig } from './types.js';
 import { handleWebhook } from './handlers/webhook.js';
@@ -10,6 +13,8 @@ import { TimeoutManager } from './monitors/timeout.js';
 import { SigilClient } from './integrations/sigil-client.js';
 import { CortexClient } from './integrations/cortex.js';
 import { enrichMessage } from './enrichment.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 /** SSE client connection. */
 interface SSEClient {
@@ -158,6 +163,21 @@ export function createBridgeServer(config: BridgeConfig): express.Express {
       pending_approvals: timeout.getPending().length,
     });
   });
+
+  // Serve UI static files (production: ../ui/dist, dev: ../../ui/dist)
+  const uiPaths = [
+    resolve(__dirname, '..', '..', 'ui', 'dist'),     // dev: bridge/src -> bridge -> sigil/ui/dist
+    resolve(__dirname, '..', 'ui', 'dist'),            // prod: bridge/dist -> bridge -> ui/dist (deployed flat)
+    resolve(process.cwd(), 'ui'),                       // cwd-relative fallback
+  ];
+  const uiDir = uiPaths.find(p => existsSync(resolve(p, 'index.html')));
+  if (uiDir) {
+    app.use(express.static(uiDir));
+    // SPA fallback — serve index.html for any unmatched GET
+    app.get('*', (_req: Request, res: Response) => {
+      res.sendFile(resolve(uiDir, 'index.html'));
+    });
+  }
 
   // Start monitors
   heartbeat.start();

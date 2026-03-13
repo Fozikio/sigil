@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 
-const BRIDGE_URL = import.meta.env.VITE_BRIDGE_URL ?? "http://localhost:3848";
+const BRIDGE_URL = import.meta.env.VITE_BRIDGE_URL ?? "";
 
 // --- Types matching bridge schema ---
 

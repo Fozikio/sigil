@@ -1,0 +1,33 @@
+# Add this block to /etc/caddy/Caddyfile on the VPS
+# Serves Sigil dashboard at sigil.idapixl.com
+# (or add as a route under ntfy.idapixl.com)
+
+# Option A: Separate domain
+sigil.idapixl.com {
+    reverse_proxy localhost:3848
+}
+
+# Option B: Path-based under existing ntfy domain
+# Add these routes BEFORE the ntfy catch-all in the ntfy.idapixl.com block:
+#
+# handle /events {
+#     reverse_proxy localhost:3848
+# }
+# handle /webhook {
+#     reverse_proxy localhost:3848
+# }
+# handle /command {
+#     reverse_proxy localhost:3848
+# }
+# handle /gesture {
+#     reverse_proxy localhost:3848
+# }
+# handle /publish {
+#     reverse_proxy localhost:3848
+# }
+# handle /status {
+#     reverse_proxy localhost:3848
+# }
+# handle /health {
+#     reverse_proxy localhost:3848
+# }
