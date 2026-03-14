@@ -2,6 +2,9 @@ import type { CommandMessage, BridgeConfig } from '../types.js';
 import type { SigilClient } from '../integrations/sigil-client.js';
 import type { CortexClient } from '../integrations/cortex.js';
 
+/** Remote control ntfy topic — the PC listener subscribes to this. */
+const RC_TOPIC = 'idapixl-rc-0836d616';
+
 export interface CommandResult {
   ok: boolean;
   command: string;
@@ -27,15 +30,16 @@ export async function handleCommand(body: unknown, ctx: CommandContext): Promise
   switch (cmd.command) {
     case 'start': {
       const project = cmd.project ?? 'paco';
-      const ntfyMessage = `start:${project}`;
+
       try {
-        await sigil.publish(config.sigil_topic, {
-          type: 'command_result',
-          message: ntfyMessage,
-          title: `Start: ${project}`,
-          tags: ['arrow_forward'],
+        // Publish to the remote control ntfy topic — the PC listener picks this up
+        // and spawns a Claude Code session on the home machine
+        await sigil.publish(RC_TOPIC, {
+          type: 'info',
+          message: `start ${project}`,
         });
-        return { ok: true, command: cmd.command, message: `Start requested for ${project}` };
+
+        return { ok: true, command: cmd.command, message: `Start command sent for ${project}` };
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Unknown error';
         return { ok: false, command: cmd.command, message: `Start failed: ${msg}` };
