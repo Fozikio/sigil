@@ -24,7 +24,8 @@ export class HeartbeatMonitor {
       status: heartbeat.status,
       last_heartbeat: new Date(),
       tool_calls: heartbeat.tool_calls ?? existing?.tool_calls ?? 0,
-      cost_usd: heartbeat.cost_usd ?? existing?.cost_usd ?? 0,
+      billing: heartbeat.billing ?? existing?.billing ?? 'unknown',
+      model: heartbeat.model ?? existing?.model ?? '',
       started_at: existing?.started_at ?? new Date(),
     };
 

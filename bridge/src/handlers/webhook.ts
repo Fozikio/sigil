@@ -24,9 +24,6 @@ export function handleWebhook(body: unknown, ctx: WebhookContext): void {
     case 'heartbeat': {
       const hb = message as unknown as HeartbeatMessage;
       ctx.heartbeat.update(hb);
-      if (hb.cost_usd !== undefined && hb.session_id) {
-        ctx.cost.update(hb.session_id, hb.cost_usd);
-      }
       break;
     }
 

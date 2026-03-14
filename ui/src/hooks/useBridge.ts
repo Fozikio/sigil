@@ -4,13 +4,16 @@ const BRIDGE_URL = import.meta.env.VITE_BRIDGE_URL ?? "";
 
 // --- Types matching bridge schema ---
 
+export type BillingContext = "subscription" | "claude-api" | "vertex-ai" | "free" | "unknown";
+
 export interface AgentSession {
   session_id: string;
   project: string;
   status: "active" | "idle" | "blocked" | "completing" | "stale";
   last_heartbeat: string;
   tool_calls: number;
-  cost_usd: number;
+  billing: BillingContext;
+  model: string;
   started_at: string;
 }
 
@@ -45,14 +48,35 @@ export interface BridgeNotification {
   enriched?: {
     project_label?: string;
     session_duration_seconds?: number;
-    session_cost_usd?: number;
+    session_billing?: string;
+    session_model?: string;
     session_tool_calls?: number;
   };
+}
+
+export type ServiceStatus = "ok" | "degraded" | "down" | "unknown";
+
+export interface ServiceHealth {
+  name: string;
+  status: ServiceStatus;
+  response_ms: number;
+  last_check: string;
+  error?: string;
+  detail?: Record<string, unknown>;
+}
+
+export interface CronTimerStatus {
+  name: "cron";
+  status: "active" | "idle" | "disabled" | "unknown";
+  next_fire?: string;
+  last_fired?: string;
 }
 
 export interface BridgeState {
   connected: boolean;
   sessions: AgentSession[];
+  services: ServiceHealth[];
+  cron: CronTimerStatus;
   notifications: BridgeNotification[];
   pendingApprovals: PendingApproval[];
   commands: CommandButton[];
@@ -66,6 +90,8 @@ export function useBridge(): BridgeState & {
 } {
   const [connected, setConnected] = useState(false);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
+  const [services, setServices] = useState<ServiceHealth[]>([]);
+  const [cron, setCron] = useState<CronTimerStatus>({ name: "cron", status: "unknown" });
   const [notifications, setNotifications] = useState<BridgeNotification[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
   const [commands, setCommands] = useState<CommandButton[]>([]);
@@ -78,6 +104,8 @@ export function useBridge(): BridgeState & {
     es.addEventListener("init", (e) => {
       const data = JSON.parse(e.data);
       setSessions(data.sessions ?? []);
+      setServices(data.services ?? []);
+      if (data.cron) setCron(data.cron);
       setPendingApprovals(data.pending_approvals ?? []);
       setCommands(data.commands ?? []);
       setConnected(true);
@@ -90,6 +118,12 @@ export function useBridge(): BridgeState & {
 
     es.addEventListener("sessions", (e) => {
       setSessions(JSON.parse(e.data));
+    });
+
+    es.addEventListener("services", (e) => {
+      const data = JSON.parse(e.data);
+      setServices(data.services ?? []);
+      if (data.cron) setCron(data.cron);
     });
 
     es.addEventListener("command_result", (e) => {
@@ -128,6 +162,8 @@ export function useBridge(): BridgeState & {
         .then((r) => r.json())
         .then((data) => {
           setSessions(data.sessions ?? []);
+          setServices(data.services ?? []);
+          if (data.cron) setCron(data.cron);
           setPendingApprovals(data.pending_approvals ?? []);
           setCommands(data.commands ?? []);
         })
@@ -163,6 +199,8 @@ export function useBridge(): BridgeState & {
   return {
     connected,
     sessions,
+    services,
+    cron,
     notifications,
     pendingApprovals,
     commands,

@@ -4,7 +4,8 @@ export interface EnrichedMessage extends AgentMessage {
   enriched: {
     project_label?: string;
     session_duration_seconds?: number;
-    session_cost_usd?: number;
+    session_billing?: string;
+    session_model?: string;
     session_tool_calls?: number;
   };
 }
@@ -27,7 +28,8 @@ export function enrichMessage(
     if (session) {
       const durationMs = Date.now() - session.started_at.getTime();
       enriched.enriched.session_duration_seconds = Math.floor(durationMs / 1000);
-      enriched.enriched.session_cost_usd = session.cost_usd;
+      enriched.enriched.session_billing = session.billing;
+      enriched.enriched.session_model = session.model;
       enriched.enriched.session_tool_calls = session.tool_calls;
     }
   }

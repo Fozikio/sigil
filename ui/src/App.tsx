@@ -20,7 +20,11 @@ export default function App() {
         />
       </header>
 
-      <StatusPanel sessions={bridge.sessions} />
+      <StatusPanel
+        sessions={bridge.sessions}
+        services={bridge.services}
+        cron={bridge.cron}
+      />
 
       <NotificationFeed
         notifications={bridge.notifications}

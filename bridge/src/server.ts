@@ -10,6 +10,7 @@ import { handleCommand, type CommandContext } from './handlers/command.js';
 import { HeartbeatMonitor } from './monitors/heartbeat.js';
 import { CostMonitor } from './monitors/cost.js';
 import { TimeoutManager } from './monitors/timeout.js';
+import { HealthMonitor } from './monitors/health.js';
 import { SigilClient, type NtfyEvent } from './integrations/sigil-client.js';
 import { CortexClient } from './integrations/cortex.js';
 import { enrichMessage } from './enrichment.js';
@@ -38,6 +39,12 @@ export function createBridgeServer(config: BridgeConfig): express.Express {
   const heartbeat = new HeartbeatMonitor(config);
   const cost = new CostMonitor(config);
   const timeout = new TimeoutManager(config);
+  const health = new HealthMonitor(config, () => {
+    broadcast('services', {
+      services: health.getServices(),
+      cron: health.getCronTimer(),
+    });
+  });
 
   // Initialize integrations
   const sigil = new SigilClient(config);
@@ -107,6 +114,8 @@ export function createBridgeServer(config: BridgeConfig): express.Express {
     // Send current state on connect
     res.write(`event: init\ndata: ${JSON.stringify({
       sessions: heartbeat.getSessions(),
+      services: health.getServices(),
+      cron: health.getCronTimer(),
       pending_approvals: timeout.getPending(),
       commands: config.commands,
     })}\n\n`);
@@ -184,6 +193,8 @@ export function createBridgeServer(config: BridgeConfig): express.Express {
   app.get('/status', (_req: Request, res: Response) => {
     res.json({
       sessions: heartbeat.getSessions(),
+      services: health.getServices(),
+      cron: health.getCronTimer(),
       pending_approvals: timeout.getPending(),
       commands: config.commands,
     });
@@ -218,6 +229,7 @@ export function createBridgeServer(config: BridgeConfig): express.Express {
   // Start monitors
   heartbeat.start();
   timeout.start();
+  health.start();
 
   return app;
 }

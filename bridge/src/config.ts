@@ -15,6 +15,12 @@ const DEFAULT_CONFIG: BridgeConfig = {
     default_per_session_usd: 3.0,
     warning_threshold: 0.9,
   },
+  health_checks: [
+    { name: 'cortex', url: 'https://idapixl-cortex-215390428499.us-central1.run.app/health', interval_seconds: 60 },
+    { name: 'webhook', url: 'http://localhost:3847/health', interval_seconds: 60 },
+    { name: 'ntfy', url: 'https://ntfy.idapixl.com/v1/health', interval_seconds: 60 },
+    { name: 'site', url: 'https://idapixl.com/api/health', interval_seconds: 120 },
+  ],
   commands: [
     { label: 'Start PACO', command: 'start', project: 'paco', icon: '\u{1F680}' },
     { label: 'Start Cortex', command: 'start', project: 'cortex', icon: '\u{1F9E0}' },
@@ -37,6 +43,7 @@ export async function loadConfig(): Promise<BridgeConfig> {
       ...parsed,
       heartbeat: { ...DEFAULT_CONFIG.heartbeat, ...parsed.heartbeat },
       cost_ceilings: { ...DEFAULT_CONFIG.cost_ceilings, ...parsed.cost_ceilings },
+      health_checks: parsed.health_checks ?? DEFAULT_CONFIG.health_checks,
       commands: parsed.commands ?? DEFAULT_CONFIG.commands,
     };
   }

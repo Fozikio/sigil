@@ -35,6 +35,8 @@ export interface GestureResponse {
 
 // --- Heartbeat ---
 
+export type BillingContext = 'subscription' | 'claude-api' | 'vertex-ai' | 'free' | 'unknown';
+
 export interface HeartbeatMessage {
   type: 'heartbeat';
   session_id: string;
@@ -42,7 +44,8 @@ export interface HeartbeatMessage {
   status: 'active' | 'idle' | 'blocked' | 'completing';
   current_task?: string;
   tool_calls?: number;
-  cost_usd?: number;
+  billing?: BillingContext;
+  model?: string;
   uptime_seconds?: number;
 }
 
@@ -75,6 +78,8 @@ export interface BridgeConfig {
     warning_threshold: number;         // default: 0.9 (90%)
   };
 
+  health_checks: HealthCheckConfig[];
+
   commands: CommandButton[];
 }
 
@@ -86,6 +91,32 @@ export interface CommandButton {
   confirm?: boolean;   // require confirmation before executing
 }
 
+// --- Service Health ---
+
+export interface HealthCheckConfig {
+  name: string;
+  url: string;
+  interval_seconds: number;
+}
+
+export type ServiceStatus = 'ok' | 'degraded' | 'down' | 'unknown';
+
+export interface ServiceHealth {
+  name: string;
+  status: ServiceStatus;
+  response_ms: number;
+  last_check: Date;
+  error?: string;
+  detail?: Record<string, unknown>;
+}
+
+export interface CronTimerStatus {
+  name: 'cron';
+  status: 'active' | 'idle' | 'disabled' | 'unknown';
+  next_fire?: string;
+  last_fired?: string;
+}
+
 // --- Internal State ---
 
 export interface AgentSession {
@@ -94,7 +125,8 @@ export interface AgentSession {
   status: 'active' | 'idle' | 'blocked' | 'completing' | 'stale';
   last_heartbeat: Date;
   tool_calls: number;
-  cost_usd: number;
+  billing: BillingContext;
+  model: string;
   started_at: Date;
 }
 

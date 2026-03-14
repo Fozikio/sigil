@@ -49,9 +49,9 @@ export function NotificationFeed({ notifications, onGesture }: Props) {
                       {n.project}
                     </span>
                   )}
-                  {n.enriched?.session_cost_usd !== undefined && (
+                  {n.enriched?.session_model && (
                     <span className="text-[11px] text-muted-foreground font-mono ml-auto">
-                      ${n.enriched.session_cost_usd.toFixed(2)}
+                      {n.enriched.session_model}
                     </span>
                   )}
                 </div>
