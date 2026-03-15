@@ -219,6 +219,12 @@ Early development. Bridge is functional -- heartbeats, commands, ntfy subscripti
 
 Part of the [Fozikio](https://github.com/Fozikio) agent toolkit.
 
+## Related Projects
+
+- [cortex-engine](https://github.com/Fozikio/cortex-engine) — Cognitive memory layer that Sigil can monitor
+- [@fozikio/reflex](https://github.com/Fozikio/reflex) — Portable safety guardrails for agents
+- [fozikio.com](https://www.fozikio.com) — Documentation and guides
+
 ## License
 
 Apache 2.0

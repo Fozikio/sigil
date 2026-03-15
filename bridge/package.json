@@ -22,5 +22,15 @@
     "typescript": "^5.7.0",
     "tsx": "^4.19.0"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "author": "Fozikio <hello@fozikio.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Fozikio/sigil.git"
+  },
+  "homepage": "https://github.com/Fozikio/sigil#readme",
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/Fozikio"
+  }
 }
