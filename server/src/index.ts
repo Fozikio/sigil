@@ -178,18 +178,18 @@ app.post('/sigil/gesture', requireDashboardAuth, (req, res) => {
   // Resolve the pending approval
   store.resolve(body.message_id);
 
-  // Webhook forwarding — gestures can trigger actions
-  if (WEBHOOK_URL) {
+  // Actionable gestures trigger real work via webhook
+  if (WEBHOOK_URL && (body.action === 'restart' || body.action === 'retry' || body.action === 'approve')) {
+    const actionPrompts: Record<string, string> = {
+      restart: 'A service was flagged as stale. Check docker compose status, identify the stale service, and restart it. Report results to sigil.',
+      retry: 'A previous task failed. Retry the operation and report results to sigil.',
+      approve: 'An action was approved via Sigil dashboard. Proceed with the approved operation.',
+    };
     webhookPost(WEBHOOK_URL, {
-      type: 'gesture',
-      action: body.action,
-      message_id: body.message_id,
-      responder: body.responder ?? 'dashboard',
-      // Pass the original message context so the webhook handler knows what was approved/rejected
-      prompt: body.action === 'approve' ? 'Approved via Sigil dashboard'
-            : body.action === 'reject' ? 'Rejected via Sigil dashboard'
-            : body.action === 'retry' ? 'Retry requested via Sigil dashboard'
-            : `Gesture: ${body.action}`,
+      prompt: actionPrompts[body.action] ?? `Gesture action: ${body.action}`,
+      source: `sigil-gesture-${body.action}`,
+      model: 'sonnet',
+      max_turns: 50,
     }).catch(() => {});
   }
 
@@ -230,26 +230,40 @@ app.post('/sigil/command', requireAuth, async (req, res) => {
   let resultType: SigilMessage['type'] = 'info';
 
   try {
-    if (WEBHOOK_URL) {
-      // Forward to webhook listener for execution
-      await webhookPost(WEBHOOK_URL, {
-        type: 'command',
-        command: body.command,
-        project: body.project,
-        prompt: body.command === 'start'
-          ? `Start a ${body.project ?? 'general'} session`
-          : body.command === 'health'
-            ? 'Run a health check on all services'
-            : `Execute command: ${body.command}`,
+    if (body.command === 'pause_all') {
+      // Pause doesn't need webhook — just publish a stop signal
+      resultMsg = 'Pause signal sent to all agents';
+      resultType = 'warning';
+    } else if (WEBHOOK_URL) {
+      // Build prompt for the webhook listener's session spawner
+      const prompts: Record<string, string> = {
+        start: `You are starting a ${body.project ?? 'general'} session. Check session-state.md for your current assignment and begin working.`,
+        health: 'Run an ops-health check: verify cortex API responds, check sigil health, check webhook listener, report status to sigil.',
+        restart: `Restart the ${body.project ?? 'stale'} service. Check docker compose status and fix any issues.`,
+      };
+      const prompt = prompts[body.command] ?? `Execute: ${body.command}`;
+      const model = body.command === 'health' ? 'sonnet' : 'opus';
+
+      const resp = await webhookPost(WEBHOOK_URL, {
+        prompt,
+        source: `sigil-${body.command}`,
+        model,
+        max_turns: body.command === 'health' ? 30 : 200,
       });
-      resultMsg = `Command "${body.command}" dispatched${body.project ? ` for ${body.project}` : ''}`;
-      resultType = 'success';
+
+      if (resp && resp.ok) {
+        resultMsg = `${body.command === 'start' ? 'Session' : 'Task'} dispatched${body.project ? ` for ${body.project}` : ''} (${model})`;
+        resultType = 'success';
+      } else {
+        resultMsg = `Webhook returned ${resp?.status ?? 'no response'} — check webhook listener`;
+        resultType = 'error';
+      }
     } else {
-      resultMsg = `Command "${body.command}" received but no webhook configured — set SIGIL_WEBHOOK_URL`;
+      resultMsg = `No webhook configured — set SIGIL_WEBHOOK_URL`;
       resultType = 'warning';
     }
-  } catch {
-    resultMsg = `Failed to dispatch command "${body.command}"`;
+  } catch (err) {
+    resultMsg = `Failed: ${err instanceof Error ? err.message : 'unknown error'}`;
     resultType = 'error';
   }
 
@@ -490,18 +504,24 @@ function buildContextCommands(
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-async function webhookPost(url: string, body: unknown): Promise<void> {
+async function webhookPost(url: string, body: unknown): Promise<Response | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (WEBHOOK_SECRET) headers['Authorization'] = `Bearer ${WEBHOOK_SECRET}`;
-    await fetch(url, {
+    if (WEBHOOK_SECRET) {
+      headers['Authorization'] = `Bearer ${WEBHOOK_SECRET}`;
+      headers['x-webhook-secret'] = WEBHOOK_SECRET; // webhook-listener uses this header
+    }
+    const resp = await fetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(body),
       signal: controller.signal,
     });
+    return resp;
+  } catch {
+    return null;
   } finally {
     clearTimeout(timeout);
   }
