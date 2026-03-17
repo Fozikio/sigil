@@ -1,16 +1,39 @@
-FROM alpine
+# Sigil server — agent control surface
+# Multi-stage: build TypeScript → copy dist + site to runtime
+FROM node:20-slim AS builder
+WORKDIR /app
 
-LABEL org.opencontainers.image.authors="philipp.heckel@gmail.com"
-LABEL org.opencontainers.image.url="https://ntfy.sh/"
-LABEL org.opencontainers.image.documentation="https://docs.ntfy.sh/"
-LABEL org.opencontainers.image.source="https://github.com/binwiederhier/ntfy"
-LABEL org.opencontainers.image.vendor="Philipp C. Heckel"
-LABEL org.opencontainers.image.licenses="Apache-2.0, GPL-2.0"
-LABEL org.opencontainers.image.title="ntfy"
-LABEL org.opencontainers.image.description="Send push notifications to your phone or desktop using PUT/POST"
+# Native addon build tools (better-sqlite3)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
 
-RUN apk add --no-cache tzdata
-COPY ntfy /usr/bin
+COPY package.json package-lock.json* ./
+RUN npm ci
+COPY tsconfig.json ./
+COPY src/ ./src/
+RUN npm run build
 
-EXPOSE 80/tcp
-ENTRYPOINT ["ntfy"]
+FROM node:20-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=8090
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev
+
+COPY --from=builder /app/dist ./dist
+
+# Copy dashboard UI build (if present)
+COPY site/ ./site/
+
+# Data directory for SQLite
+RUN mkdir -p /app/data
+VOLUME /app/data
+
+EXPOSE 8090
+CMD ["node", "dist/index.js"]

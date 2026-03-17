@@ -1,0 +1,43 @@
+{
+  "name": "@fozikio/sigil",
+  "version": "0.1.0",
+  "description": "Agent control surface — pub/sub, gestures, commands, dashboard. Built for autonomous agents that need human-in-the-loop control.",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "build:ui": "cd ../ui && npm run build && cp -r dist ../server/site",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.7.0",
+    "express": "^4.21.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.18.0",
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0"
+  },
+  "license": "Apache-2.0",
+  "author": "Fozikio <hello@fozikio.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Fozikio/sigil.git"
+  },
+  "keywords": [
+    "agent",
+    "control-surface",
+    "pub-sub",
+    "notifications",
+    "autonomous-agents",
+    "human-in-the-loop"
+  ]
+}
