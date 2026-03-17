@@ -95,7 +95,7 @@ export function NotificationFeed({ notifications, onGesture, onDismiss }: Props)
                 </p>
               )}
               <p className={`text-[11px] leading-snug mt-0.5 ${isFirst ? 'text-foreground/70' : 'text-foreground/50'}`}>
-                {n.message}
+                {n.message.replace(/^"|"$/g, '')}
               </p>
 
               {/* Action buttons */}

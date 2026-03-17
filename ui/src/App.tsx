@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { StatusPanel } from "@/components/StatusPanel";
 import { NotificationFeed } from "@/components/NotificationFeed";
 import { CommandPanel } from "@/components/CommandPanel";
+import { StatusFooter } from "@/components/StatusFooter";
 import { LoginGate } from "@/components/LoginGate";
 import { useSigil } from "@/hooks/useSigil";
 
@@ -43,28 +44,32 @@ function Dashboard() {
 
   return (
     <div className="h-dvh flex flex-col bg-background text-foreground sigil-scanlines">
-      <header className="px-4 py-2.5 flex items-center justify-between border-b border-border/50">
-        <div className="flex items-center gap-2.5">
+      <header className="px-4 py-2 flex items-center justify-between border-b border-border/40">
+        <div className="flex items-center gap-2">
           <div className={`h-1.5 w-1.5 rounded-full ${
             sigil.connected ? "bg-[var(--sigil-ok)] sigil-glow-ok" : "bg-[var(--sigil-error)] sigil-glow-error"
           }`} />
-          <span className="text-[11px] font-semibold tracking-[0.2em] uppercase text-muted-foreground">
+          <span className="text-[11px] font-semibold tracking-[0.15em] uppercase text-muted-foreground/70">
             Sigil
           </span>
+          {sigil.pendingApprovals.length > 0 && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--sigil-approval)]/15 text-[var(--sigil-approval)] font-medium">
+              {sigil.pendingApprovals.length} pending
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground/40">
           {sigil.sessions.length > 0 && (
-            <span className="text-[var(--sigil-ok)]">
+            <span className="text-[var(--sigil-ok)]/70">
               {sigil.sessions.length} active
             </span>
           )}
           {sigil.notifications.length > 0 && (
             <button
               onClick={sigil.clearAll}
-              className="hover:text-foreground transition-colors"
-              title="Clear all notifications"
+              className="hover:text-foreground/60 transition-colors"
             >
-              {sigil.notifications.length} msg · clear
+              clear
             </button>
           )}
         </div>
@@ -82,6 +87,8 @@ function Dashboard() {
         commands={sigil.commands}
         onCommand={sigil.sendCommand}
       />
+
+      <StatusFooter connected={sigil.connected} />
     </div>
   );
 }

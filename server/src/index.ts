@@ -131,7 +131,7 @@ app.post('/publish', requireAuth, (req, res) => {
     expires: now + DEFAULT_TTL,
     type: msgType,
     title: body.title,
-    message: body.message,
+    message: typeof body.message === 'string' ? body.message.replace(/^"|"$/g, '') : body.message,
     priority: body.priority ?? 'default',
     project: body.project,
     session_id: body.session_id,
