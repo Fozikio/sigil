@@ -15,12 +15,11 @@ interface Props {
   onCommand: (command: string, project?: string) => Promise<void>;
 }
 
-// Visual treatment per command type
-const commandStyle: Record<string, string> = {
-  start: "border-[var(--sigil-ok)]/30 text-[var(--sigil-ok)] hover:bg-[var(--sigil-ok)]/10 hover:border-[var(--sigil-ok)]/60",
-  restart: "border-[var(--sigil-warn)]/30 text-[var(--sigil-warn)] hover:bg-[var(--sigil-warn)]/10 hover:border-[var(--sigil-warn)]/60",
-  health: "border-border/40 text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
-  pause_all: "border-[var(--sigil-error)]/30 text-[var(--sigil-error)] hover:bg-[var(--sigil-error)]/10 hover:border-[var(--sigil-error)]/60",
+const commandStyle: Record<string, { border: string; text: string; hover: string; activeBg: string }> = {
+  start:     { border: "border-[var(--sigil-ok)]/25",   text: "text-[var(--sigil-ok)]",   hover: "hover:bg-[var(--sigil-ok)]/8 hover:border-[var(--sigil-ok)]/50",   activeBg: "bg-[var(--sigil-ok)]/10" },
+  restart:   { border: "border-[var(--sigil-warn)]/25",  text: "text-[var(--sigil-warn)]",  hover: "hover:bg-[var(--sigil-warn)]/8 hover:border-[var(--sigil-warn)]/50",  activeBg: "bg-[var(--sigil-warn)]/10" },
+  health:    { border: "border-border/30",               text: "text-muted-foreground",     hover: "hover:bg-secondary/30 hover:text-foreground hover:border-border/50",               activeBg: "bg-secondary/20" },
+  pause_all: { border: "border-[var(--sigil-error)]/25", text: "text-[var(--sigil-error)]", hover: "hover:bg-[var(--sigil-error)]/8 hover:border-[var(--sigil-error)]/50", activeBg: "bg-[var(--sigil-error)]/10" },
 };
 
 export function CommandPanel({ commands, onCommand }: Props) {
@@ -52,37 +51,33 @@ export function CommandPanel({ commands, onCommand }: Props) {
     setConfirmTarget(null);
   }
 
-  // Group: primary actions (start/restart) vs secondary (health, pause)
   const primary = commands.filter(c => c.command === 'start' || c.command === 'restart');
   const secondary = commands.filter(c => c.command !== 'start' && c.command !== 'restart');
 
   return (
     <>
-      <div className="px-4 pb-4 pt-3 border-t border-border/40 bg-[var(--sigil-surface)] space-y-2">
-        {/* Primary actions — full width, prominent */}
+      <div className="px-3 pb-3 pt-2.5 border-t border-border/30 bg-[var(--sigil-surface)]">
+        {/* Primary: launchers / restart */}
         {primary.length > 0 && (
-          <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${Math.min(primary.length, 3)}, 1fr)` }}>
+          <div className="grid gap-1.5 mb-1.5" style={{ gridTemplateColumns: `repeat(${Math.min(primary.length, 3)}, 1fr)` }}>
             {primary.map((cmd) => {
               const key = `${cmd.command}-${cmd.project ?? ''}`;
-              const isExecuting = executing === key;
-              const style = commandStyle[cmd.command] ?? commandStyle.health;
-
+              const isExec = executing === key;
+              const s = commandStyle[cmd.command] ?? commandStyle.health;
               return (
                 <button
                   key={key}
                   onClick={() => handleClick(cmd)}
-                  disabled={isExecuting}
-                  className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border text-[12px] font-medium transition-all duration-200 ${
-                    isExecuting
-                      ? "border-[var(--sigil-ok)] bg-[var(--sigil-ok)]/10 text-[var(--sigil-ok)]"
-                      : style
-                  } disabled:opacity-50 active:scale-[0.97]`}
+                  disabled={isExec}
+                  className={`flex items-center justify-center gap-2 px-3 py-3 rounded border text-[12px] font-medium transition-all duration-150 active:scale-[0.97] ${
+                    isExec ? `${s.activeBg} ${s.border} ${s.text} sigil-pulse` : `${s.border} ${s.text} ${s.hover}`
+                  } disabled:opacity-40`}
                 >
-                  {isExecuting ? (
-                    <span className="sigil-pulse">Dispatching...</span>
+                  {isExec ? (
+                    <span>Dispatching...</span>
                   ) : (
                     <>
-                      {cmd.icon && <span className="text-sm">{cmd.icon}</span>}
+                      {cmd.icon && <span className="text-base leading-none">{cmd.icon}</span>}
                       <span>{cmd.label}</span>
                     </>
                   )}
@@ -92,24 +87,21 @@ export function CommandPanel({ commands, onCommand }: Props) {
           </div>
         )}
 
-        {/* Secondary actions — smaller, row */}
+        {/* Secondary: health, stop */}
         {secondary.length > 0 && (
-          <div className="flex gap-2">
+          <div className="flex gap-1.5">
             {secondary.map((cmd) => {
               const key = `${cmd.command}-${cmd.project ?? ''}`;
-              const isExecuting = executing === key;
-              const style = commandStyle[cmd.command] ?? commandStyle.health;
-
+              const isExec = executing === key;
+              const s = commandStyle[cmd.command] ?? commandStyle.health;
               return (
                 <button
                   key={key}
                   onClick={() => handleClick(cmd)}
-                  disabled={isExecuting}
-                  className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md border text-[11px] transition-all duration-200 ${
-                    isExecuting
-                      ? "border-[var(--sigil-ok)] text-[var(--sigil-ok)]"
-                      : style
-                  } disabled:opacity-50 active:scale-[0.97]`}
+                  disabled={isExec}
+                  className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded border text-[11px] transition-all duration-150 active:scale-[0.97] ${
+                    isExec ? `${s.activeBg} ${s.text}` : `${s.border} ${s.text} ${s.hover}`
+                  } disabled:opacity-40`}
                 >
                   {cmd.icon && <span>{cmd.icon}</span>}
                   <span>{cmd.label}</span>
@@ -120,35 +112,21 @@ export function CommandPanel({ commands, onCommand }: Props) {
         )}
       </div>
 
-      {/* Confirmation dialog */}
-      <Dialog
-        open={confirmTarget !== null}
-        onOpenChange={(open) => !open && setConfirmTarget(null)}
-      >
-        <DialogContent className="max-w-xs bg-[var(--sigil-surface-raised)] border-[var(--sigil-error)]/30">
+      <Dialog open={confirmTarget !== null} onOpenChange={(open) => !open && setConfirmTarget(null)}>
+        <DialogContent className="max-w-[280px] bg-[var(--sigil-surface-raised)] border-[var(--sigil-error)]/20">
           <DialogHeader>
-            <DialogTitle className="text-sm font-medium">
+            <DialogTitle className="text-[13px] font-medium">
               {confirmTarget?.icon} {confirmTarget?.label}
             </DialogTitle>
-            <DialogDescription className="text-[11px]">
-              This will execute immediately. Confirm?
+            <DialogDescription className="text-[11px] text-muted-foreground/60">
+              Execute immediately?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-[11px] h-8"
-              onClick={() => setConfirmTarget(null)}
-            >
+            <Button variant="outline" size="sm" className="text-[11px] h-8 border-border/30" onClick={() => setConfirmTarget(null)}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              className="text-[11px] h-8"
-              onClick={confirmAction}
-            >
+            <Button variant="destructive" size="sm" className="text-[11px] h-8" onClick={confirmAction}>
               Execute
             </Button>
           </DialogFooter>
