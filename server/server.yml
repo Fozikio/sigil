@@ -1,0 +1,22 @@
+# Sigil Server (ntfy fork) — minimal config
+# Docs: https://docs.ntfy.sh/config/
+
+# Listen on all interfaces (Docker handles port mapping)
+listen-http: ":80"
+
+# SQLite cache for message persistence
+cache-file: /var/cache/ntfy/cache.db
+cache-duration: "24h"
+
+# Attachment settings
+attachment-cache-dir: /var/cache/ntfy/attachments
+attachment-total-size-limit: "100M"
+attachment-file-size-limit: "10M"
+
+# Auth — enable for production, configure users via CLI
+# auth-file: /var/cache/ntfy/user.db
+# auth-default-access: "deny-all"
+
+# Logging
+log-level: info
+log-format: json
