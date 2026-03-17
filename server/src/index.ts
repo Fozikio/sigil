@@ -9,6 +9,7 @@ import { WebSocketServer } from 'ws';
 import { existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { spawn } from 'child_process';
 
 import { MessageStore } from './store.js';
 import { PubSub } from './pubsub.js';
@@ -178,19 +179,11 @@ app.post('/sigil/gesture', requireDashboardAuth, (req, res) => {
   // Resolve the pending approval
   store.resolve(body.message_id);
 
-  // Actionable gestures trigger real work via webhook
-  if (WEBHOOK_URL && (body.action === 'restart' || body.action === 'retry' || body.action === 'approve')) {
-    const actionPrompts: Record<string, string> = {
-      restart: 'A service was flagged as stale. Check docker compose status, identify the stale service, and restart it. Report results to sigil.',
-      retry: 'A previous task failed. Retry the operation and report results to sigil.',
-      approve: 'An action was approved via Sigil dashboard. Proceed with the approved operation.',
-    };
-    webhookPost(WEBHOOK_URL, {
-      prompt: actionPrompts[body.action] ?? `Gesture action: ${body.action}`,
-      source: `sigil-gesture-${body.action}`,
-      model: 'sonnet',
-      max_turns: 50,
-    }).catch(() => {});
+  // Actionable gestures trigger real work
+  if (body.action === 'restart') {
+    executeCommand('restart');
+  } else if (body.action === 'retry' || body.action === 'approve') {
+    executeCommand('start');
   }
 
   // Publish human-readable feedback
@@ -223,63 +216,8 @@ app.post('/sigil/command', requireAuth, async (req, res) => {
     return;
   }
 
-  const now = Math.floor(Date.now() / 1000);
-
-  // Execute the command and publish result
-  let resultMsg: string;
-  let resultType: SigilMessage['type'] = 'info';
-
-  try {
-    if (body.command === 'pause_all') {
-      // Pause doesn't need webhook — just publish a stop signal
-      resultMsg = 'Pause signal sent to all agents';
-      resultType = 'warning';
-    } else if (WEBHOOK_URL) {
-      // Build prompt for the webhook listener's session spawner
-      const prompts: Record<string, string> = {
-        start: `You are starting a ${body.project ?? 'general'} session. Check session-state.md for your current assignment and begin working.`,
-        health: 'Run an ops-health check: verify cortex API responds, check sigil health, check webhook listener, report status to sigil.',
-        restart: `Restart the ${body.project ?? 'stale'} service. Check docker compose status and fix any issues.`,
-      };
-      const prompt = prompts[body.command] ?? `Execute: ${body.command}`;
-      const model = body.command === 'health' ? 'sonnet' : 'opus';
-
-      const resp = await webhookPost(WEBHOOK_URL, {
-        prompt,
-        source: `sigil-${body.command}`,
-        model,
-        max_turns: body.command === 'health' ? 30 : 200,
-      });
-
-      if (resp && resp.ok) {
-        resultMsg = `${body.command === 'start' ? 'Session' : 'Task'} dispatched${body.project ? ` for ${body.project}` : ''} (${model})`;
-        resultType = 'success';
-      } else {
-        resultMsg = `Webhook returned ${resp?.status ?? 'no response'} — check webhook listener`;
-        resultType = 'error';
-      }
-    } else {
-      resultMsg = `No webhook configured — set SIGIL_WEBHOOK_URL`;
-      resultType = 'warning';
-    }
-  } catch (err) {
-    resultMsg = `Failed: ${err instanceof Error ? err.message : 'unknown error'}`;
-    resultType = 'error';
-  }
-
-  // Publish result as notification so dashboard shows feedback
-  const cmdResult: SigilMessage = {
-    id: PubSub.messageId(),
-    topic: 'sigil-commands',
-    time: now,
-    expires: now + DEFAULT_TTL,
-    type: resultType,
-    title: `Command: ${body.command}`,
-    message: resultMsg,
-    project: body.project,
-  };
-  pubsub.publish(cmdResult);
-
+  // Execute the command — results publish async to the feed
+  executeCommand(body.command, body.project);
   res.json({ ok: true, command: body.command });
 });
 
@@ -416,6 +354,161 @@ server.listen(PORT, () => {
   if (AUTH_TOKEN) console.log('Auth: enabled (SIGIL_TOKEN)');
   if (WEBHOOK_URL) console.log(`Webhook: ${WEBHOOK_URL}`);
 });
+
+// ─── Command Executor ───────────────────────────────────────────────────────
+const AGENT_RUNNER = process.env.SIGIL_AGENT_RUNNER ?? ''; // e.g. "node /path/to/agent-runner/dist/index.js"
+const PROJECT_ROOT = process.env.SIGIL_PROJECT_ROOT ?? process.cwd();
+
+function executeCommand(command: string, project?: string): void {
+  const now = Math.floor(Date.now() / 1000);
+
+  if (command === 'health') {
+    // Health check — hit our own endpoints + cortex
+    healthCheck().then(result => {
+      pubsub.publish({
+        id: PubSub.messageId(),
+        topic: 'sigil-commands',
+        time: Math.floor(Date.now() / 1000),
+        expires: Math.floor(Date.now() / 1000) + DEFAULT_TTL,
+        type: result.healthy ? 'success' : 'warning',
+        title: 'Health check',
+        message: result.summary,
+      });
+    });
+    return;
+  }
+
+  if (command === 'start' && AGENT_RUNNER) {
+    // Spawn agent session via agent-runner
+    const [cmd, ...args] = AGENT_RUNNER.split(' ');
+    const prompt = `You are starting a ${project ?? 'general'} session. Check session-state.md for your current assignment and begin working.`;
+    const child = spawn(cmd, [...args, '--prompt', prompt, '--max-turns', '40', '--cwd', PROJECT_ROOT], {
+      env: { ...process.env },
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.unref();
+
+    pubsub.publish({
+      id: PubSub.messageId(),
+      topic: 'sigil-commands',
+      time: now,
+      expires: now + DEFAULT_TTL,
+      type: 'success',
+      title: `Session started`,
+      message: `${project ?? 'Agent'} session spawned via agent-runner`,
+      project,
+    });
+    return;
+  }
+
+  if (command === 'start' && WEBHOOK_URL) {
+    // Fallback: use webhook listener
+    webhookPost(WEBHOOK_URL, {
+      prompt: `Start a ${project ?? 'general'} session. Check session-state.md for assignment.`,
+      source: `sigil-start-${project ?? 'agent'}`,
+      model: 'gemini-2.5-pro',
+      max_turns: 40,
+    }).then(resp => {
+      pubsub.publish({
+        id: PubSub.messageId(),
+        topic: 'sigil-commands',
+        time: Math.floor(Date.now() / 1000),
+        expires: Math.floor(Date.now() / 1000) + DEFAULT_TTL,
+        type: resp?.ok ? 'success' : 'error',
+        title: `Session ${resp?.ok ? 'started' : 'failed'}`,
+        message: resp?.ok
+          ? `${project ?? 'Agent'} session dispatched to webhook listener`
+          : `Webhook returned ${resp?.status ?? 'no response'}`,
+        project,
+      });
+    });
+    return;
+  }
+
+  if (command === 'restart') {
+    // Docker restart
+    const service = project ?? 'sigil';
+    const child = spawn('docker', ['compose', 'restart', service], {
+      cwd: dirname(DB_PATH).replace('/data', ''),
+      stdio: 'pipe',
+    });
+    let output = '';
+    child.stdout?.on('data', (d: Buffer) => output += d.toString());
+    child.stderr?.on('data', (d: Buffer) => output += d.toString());
+    child.on('close', (code) => {
+      pubsub.publish({
+        id: PubSub.messageId(),
+        topic: 'sigil-commands',
+        time: Math.floor(Date.now() / 1000),
+        expires: Math.floor(Date.now() / 1000) + DEFAULT_TTL,
+        type: code === 0 ? 'success' : 'error',
+        title: code === 0 ? `Restarted ${service}` : `Restart failed`,
+        message: output.trim() || (code === 0 ? 'Service restarted' : `Exit code ${code}`),
+        project,
+      });
+    });
+    return;
+  }
+
+  // Unknown command
+  pubsub.publish({
+    id: PubSub.messageId(),
+    topic: 'sigil-commands',
+    time: now,
+    expires: now + DEFAULT_TTL,
+    type: 'warning',
+    title: `Unknown command: ${command}`,
+    message: 'Configure SIGIL_AGENT_RUNNER or SIGIL_WEBHOOK_URL for session spawning',
+  });
+}
+
+async function healthCheck(): Promise<{ healthy: boolean; summary: string }> {
+  const checks: string[] = [];
+  let allHealthy = true;
+
+  // Check self
+  checks.push('sigil: ok');
+
+  // Check cortex
+  const cortexUrl = process.env.CORTEX_API_URL ?? process.env.SIGIL_CORTEX_URL ?? '';
+  if (cortexUrl) {
+    try {
+      const r = await fetch(`${cortexUrl}/health`, { signal: AbortSignal.timeout(5000) });
+      if (r.ok) {
+        checks.push('cortex: ok');
+      } else {
+        checks.push(`cortex: ${r.status}`);
+        allHealthy = false;
+      }
+    } catch {
+      checks.push('cortex: unreachable');
+      allHealthy = false;
+    }
+  }
+
+  // Check webhook listener
+  if (WEBHOOK_URL) {
+    try {
+      const url = WEBHOOK_URL.replace('/hooks/trigger', '/health');
+      const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      if (r.ok) {
+        checks.push('webhook: ok');
+      } else {
+        checks.push(`webhook: ${r.status}`);
+        allHealthy = false;
+      }
+    } catch {
+      checks.push('webhook: unreachable');
+      allHealthy = false;
+    }
+  }
+
+  return {
+    healthy: allHealthy,
+    summary: checks.join(' · '),
+  };
+}
 
 // ─── Smart Actions ──────────────────────────────────────────────────────────
 function autoActions(message: string, type: string): SigilMessage['actions'] {
