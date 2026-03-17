@@ -447,14 +447,61 @@ function executeCommand(command: string, project?: string): void {
     const prompt = `You are starting a ${project ?? 'general'} session. Check session-state.md for your current assignment and begin working.`;
     const allArgs = [...baseArgs, '--prompt', prompt, '--max-turns', '40', '--cwd', PROJECT_ROOT];
 
+    const sessionId = `sigil-${PubSub.messageId()}`;
     const child = spawn(cmd, allArgs, {
       env: { ...process.env },
       cwd: PROJECT_ROOT,
       detached: true,
-      stdio: 'ignore',
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
-    child.unref();
+
+    // Track the session — it shows up in the dashboard immediately
+    sessions.heartbeat(sessionId, {
+      project: project ?? 'agent',
+      status: 'active',
+      model: 'gemini-2.5-pro',
+    });
+
+    pubsub.publish({
+      id: PubSub.messageId(),
+      topic: 'sigil-commands',
+      time: now,
+      expires: now + DEFAULT_TTL,
+      type: 'success',
+      title: `Session started: ${project ?? 'agent'}`,
+      message: `Running on gemini-2.5-pro (max 40 turns)`,
+      project,
+    });
+
+    // Capture output for when it finishes
+    let output = '';
+    child.stdout?.on('data', (d: Buffer) => {
+      const line = d.toString().trim();
+      if (line) output = line; // Keep last line as summary
+    });
+    child.stderr?.on('data', (d: Buffer) => {
+      const line = d.toString().trim();
+      if (line) output = line;
+    });
+
+    // When session ends, report result
+    child.on('close', (code) => {
+      sessions.end(sessionId);
+      const success = code === 0;
+      pubsub.publish({
+        id: PubSub.messageId(),
+        topic: 'sigil-commands',
+        time: Math.floor(Date.now() / 1000),
+        expires: Math.floor(Date.now() / 1000) + DEFAULT_TTL,
+        type: success ? 'success' : 'error',
+        title: `Session ${success ? 'complete' : 'failed'}: ${project ?? 'agent'}`,
+        message: output || (success ? 'Finished successfully' : `Exited with code ${code}`),
+        project,
+      });
+    });
+
     child.on('error', (err) => {
+      sessions.end(sessionId);
       pubsub.publish({
         id: PubSub.messageId(),
         topic: 'sigil-commands',
@@ -467,16 +514,7 @@ function executeCommand(command: string, project?: string): void {
       });
     });
 
-    pubsub.publish({
-      id: PubSub.messageId(),
-      topic: 'sigil-commands',
-      time: now,
-      expires: now + DEFAULT_TTL,
-      type: 'success',
-      title: `Session started`,
-      message: `${project ?? 'Agent'} session spawned via agent-runner`,
-      project,
-    });
+    child.unref();
     return;
   }
 
@@ -630,40 +668,25 @@ function buildContextCommands(
 ): CommandButton[] {
   const cmds: CommandButton[] = [];
 
-  // Stale sessions get restart/kill buttons
-  const staleSessions = activeSessions.filter(s => s.status === 'stale');
-  for (const s of staleSessions) {
-    cmds.push({
-      label: `Restart ${s.project || 'session'}`,
-      command: 'restart',
-      project: s.project,
-      icon: '🔄',
-    });
-  }
+  const hasActive = activeSessions.some(s => s.status === 'active');
+  const stale = activeSessions.filter(s => s.status === 'stale');
 
-  // Active sessions get a stop button
-  if (activeSessions.some(s => s.status === 'active')) {
-    cmds.push({
-      label: 'Stop All',
-      command: 'pause_all',
-      icon: '✋',
-      confirm: true,
-    });
-  }
-
-  // If NO sessions are running, show launchers from config
-  if (activeSessions.length === 0) {
-    // Add configured launch commands
+  if (hasActive) {
+    // Session running — show stop, no launchers
+    cmds.push({ label: 'Stop All', command: 'pause_all', icon: '■', confirm: true });
+  } else if (stale.length > 0) {
+    // Stale sessions — show restart
+    for (const s of stale) {
+      cmds.push({ label: `Restart ${s.project || 'session'}`, command: 'restart', project: s.project, icon: '🔄' });
+    }
+  } else {
+    // Nothing running — show launchers
     for (const cmd of commands) {
-      if (cmd.command === 'start') {
-        cmds.push(cmd);
-      }
+      if (cmd.command === 'start') cmds.push(cmd);
     }
   }
 
-  // Health is auto-polled now — no button needed
-
-  // Add any non-start, non-health commands from config (custom ones)
+  // Always include custom commands (not start/health/pause)
   for (const cmd of commands) {
     if (cmd.command !== 'start' && cmd.command !== 'health' && cmd.command !== 'pause_all') {
       cmds.push(cmd);
