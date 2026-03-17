@@ -107,11 +107,17 @@ app.post('/publish', requireAuth, (req, res) => {
 
 // ─── Status (dashboard polls or SSE inits from here) ────────────────────────
 app.get('/sigil/status', (_req, res) => {
+  const activeSessions = sessions.getAll();
+  const pendingApprovals = store.getPendingApprovals();
+
+  // Build context-aware commands
+  const contextCommands = buildContextCommands(activeSessions, pendingApprovals);
+
   const resp: StatusResponse = {
-    sessions: sessions.getAll(),
+    sessions: activeSessions,
     notifications: store.getRecent(50),
-    pending_approvals: store.getPendingApprovals(),
-    commands,
+    pending_approvals: pendingApprovals,
+    commands: contextCommands,
   };
   res.json(resp);
 });
@@ -302,6 +308,57 @@ server.listen(PORT, () => {
   if (AUTH_TOKEN) console.log('Auth: enabled (SIGIL_TOKEN)');
   if (WEBHOOK_URL) console.log(`Webhook: ${WEBHOOK_URL}`);
 });
+
+// ─── Context-Aware Commands ─────────────────────────────────────────────────
+function buildContextCommands(
+  activeSessions: import('./types.js').AgentSession[],
+  _pendingApprovals: SigilMessage[],
+): CommandButton[] {
+  const cmds: CommandButton[] = [];
+
+  // Stale sessions get restart/kill buttons
+  const staleSessions = activeSessions.filter(s => s.status === 'stale');
+  for (const s of staleSessions) {
+    cmds.push({
+      label: `Restart ${s.project || 'session'}`,
+      command: 'restart',
+      project: s.project,
+      icon: '🔄',
+    });
+  }
+
+  // Active sessions get a stop button
+  if (activeSessions.some(s => s.status === 'active')) {
+    cmds.push({
+      label: 'Stop All',
+      command: 'pause_all',
+      icon: '✋',
+      confirm: true,
+    });
+  }
+
+  // If NO sessions are running, show launchers from config
+  if (activeSessions.length === 0) {
+    // Add configured launch commands
+    for (const cmd of commands) {
+      if (cmd.command === 'start') {
+        cmds.push(cmd);
+      }
+    }
+  }
+
+  // Always show health check
+  cmds.push({ label: 'Health', command: 'health', icon: '💊' });
+
+  // Add any non-start, non-health commands from config (custom ones)
+  for (const cmd of commands) {
+    if (cmd.command !== 'start' && cmd.command !== 'health' && cmd.command !== 'pause_all') {
+      cmds.push(cmd);
+    }
+  }
+
+  return cmds;
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 async function webhookPost(url: string, body: unknown): Promise<void> {
