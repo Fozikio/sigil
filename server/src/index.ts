@@ -423,6 +423,27 @@ const PROJECT_ROOT = process.env.SIGIL_PROJECT_ROOT ?? process.cwd();
 function executeCommand(command: string, project?: string): void {
   const now = Math.floor(Date.now() / 1000);
 
+  if (command === 'pause_all') {
+    // Kill any running agent-runner sessions
+    const kill = spawn('pkill', ['-f', 'agent-runner'], { stdio: 'ignore' });
+    kill.on('close', (code) => {
+      pubsub.publish({
+        id: PubSub.messageId(),
+        topic: 'sigil-commands',
+        time: Math.floor(Date.now() / 1000),
+        expires: Math.floor(Date.now() / 1000) + DEFAULT_TTL,
+        type: code === 0 ? 'warning' : 'info',
+        title: 'All sessions stopped',
+        message: code === 0 ? 'Active agent sessions killed' : 'No active sessions to stop',
+      });
+    });
+    // Clear all tracked sessions
+    for (const s of sessions.getAll()) {
+      sessions.end(s.session_id);
+    }
+    return;
+  }
+
   if (command === 'health') {
     // Health check — hit our own endpoints + cortex
     healthCheck().then(result => {
