@@ -116,18 +116,26 @@ app.post('/publish', requireAuth, (req, res) => {
   }
 
   const now = Math.floor(Date.now() / 1000);
+  const msgType = body.type ?? 'info';
+
+  // Auto-add actions for warnings/errors if agent didn't provide any
+  let actions = body.actions;
+  if (!actions && (msgType === 'warning' || msgType === 'error')) {
+    actions = autoActions(body.message, msgType);
+  }
+
   const msg: SigilMessage = {
     id: PubSub.messageId(),
     topic: body.topic ?? 'default',
     time: now,
     expires: now + DEFAULT_TTL,
-    type: body.type ?? 'info',
+    type: msgType,
     title: body.title,
     message: body.message,
     priority: body.priority ?? 'default',
     project: body.project,
     session_id: body.session_id,
-    actions: body.actions,
+    actions,
     timeout: body.timeout,
     fallback: body.fallback,
   };
@@ -185,15 +193,22 @@ app.post('/sigil/gesture', requireDashboardAuth, (req, res) => {
     }).catch(() => {});
   }
 
-  // Publish feedback so dashboard shows the action was taken
+  // Publish human-readable feedback
+  const actionLabels: Record<string, string> = {
+    approve: 'Approved',
+    reject: 'Rejected',
+    retry: 'Retry requested',
+    detail: 'Details requested',
+    dismiss: 'Dismissed',
+  };
+  const label = actionLabels[body.action] ?? body.action;
   const feedbackMsg: SigilMessage = {
     id: PubSub.messageId(),
     topic: 'sigil-gestures',
     time: Math.floor(Date.now() / 1000),
-    expires: Math.floor(Date.now() / 1000) + DEFAULT_TTL,
+    expires: Math.floor(Date.now() / 1000) + 300, // 5 min TTL — ephemeral feedback
     type: 'success',
-    message: `${body.action} → ${body.message_id.slice(0, 8)}`,
-    title: `Gesture: ${body.action}`,
+    message: label,
   };
   pubsub.publish(feedbackMsg);
 
@@ -277,24 +292,52 @@ app.post('/sigil/webhook', requireAuth, (req, res) => {
       }
       break;
 
-    case 'notification':
+    case 'notification': {
       // Agent sends a notification to be displayed
-      const msg: SigilMessage = {
+      const notifType = body.type === 'warning' || body.priority === 'urgent' ? 'warning'
+        : body.type === 'error' ? 'error'
+        : body.type === 'success' ? 'success'
+        : body.type === 'approval' ? 'approval'
+        : 'info';
+
+      // Auto-add contextual actions for warnings/errors if none provided
+      let actions = body.actions;
+      if (!actions && (notifType === 'warning' || notifType === 'error')) {
+        const msg_lower = (body.message ?? '').toLowerCase();
+        if (msg_lower.includes('stale') || msg_lower.includes('heartbeat') || msg_lower.includes('down')) {
+          actions = [
+            { gesture: '🔄', label: 'Restart', action: 'restart' },
+            { gesture: '👀', label: 'Investigate', action: 'detail' },
+          ];
+        } else if (msg_lower.includes('deploy') || msg_lower.includes('update')) {
+          actions = [
+            { gesture: '👍', label: 'Approve', action: 'approve' },
+            { gesture: '👎', label: 'Skip', action: 'reject' },
+          ];
+        } else {
+          actions = [
+            { gesture: '👀', label: 'Investigate', action: 'detail' },
+          ];
+        }
+      }
+
+      const notifMsg: SigilMessage = {
         id: PubSub.messageId(),
         topic: body.project ? `sigil-${body.project}` : 'sigil-notifications',
         time: Math.floor(Date.now() / 1000),
         expires: Math.floor(Date.now() / 1000) + DEFAULT_TTL,
-        type: body.priority === 'urgent' ? 'warning' : 'info',
+        type: notifType,
         title: body.title,
         message: body.message ?? '',
         project: body.project,
         session_id: body.session_id,
-        actions: body.actions,
+        actions,
         timeout: body.timeout,
         fallback: body.fallback,
       };
-      pubsub.publish(msg);
+      pubsub.publish(notifMsg);
       break;
+    }
   }
 
   res.json({ ok: true });
@@ -359,6 +402,41 @@ server.listen(PORT, () => {
   if (AUTH_TOKEN) console.log('Auth: enabled (SIGIL_TOKEN)');
   if (WEBHOOK_URL) console.log(`Webhook: ${WEBHOOK_URL}`);
 });
+
+// ─── Smart Actions ──────────────────────────────────────────────────────────
+function autoActions(message: string, type: string): SigilMessage['actions'] {
+  const lower = message.toLowerCase();
+
+  if (type === 'approval' || lower.includes('deploy') || lower.includes('approve')) {
+    return [
+      { gesture: '👍', label: 'Approve', action: 'approve' },
+      { gesture: '👎', label: 'Reject', action: 'reject' },
+      { gesture: '👀', label: 'Details', action: 'detail' },
+    ];
+  }
+  if (lower.includes('stale') || lower.includes('heartbeat') || lower.includes('down') || lower.includes('restart')) {
+    return [
+      { gesture: '🔄', label: 'Restart', action: 'restart' },
+      { gesture: '✋', label: 'Ignore', action: 'dismiss' },
+    ];
+  }
+  if (lower.includes('fail') || lower.includes('error') || lower.includes('crash')) {
+    return [
+      { gesture: '🔄', label: 'Retry', action: 'retry' },
+      { gesture: '👀', label: 'Investigate', action: 'detail' },
+    ];
+  }
+  if (lower.includes('cost') || lower.includes('budget') || lower.includes('limit')) {
+    return [
+      { gesture: '✋', label: 'Stop', action: 'pause_all' },
+      { gesture: '👀', label: 'Details', action: 'detail' },
+    ];
+  }
+  // Generic warning/error — at least give investigate
+  return [
+    { gesture: '👀', label: 'Investigate', action: 'detail' },
+  ];
+}
 
 // ─── Context-Aware Commands ─────────────────────────────────────────────────
 function buildContextCommands(
