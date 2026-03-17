@@ -2,31 +2,40 @@ import { useEffect, useState } from "react";
 
 const BASE_URL = import.meta.env.VITE_SIGIL_URL ?? "";
 
-interface HealthData {
-  healthy: boolean;
-  clients: number;
-  sessions: number;
-  uptime: number;
-}
-
-function formatUptime(seconds: number): string {
-  if (seconds < 60) return `${Math.floor(seconds)}s`;
-  const mins = Math.floor(seconds / 60);
-  if (mins < 60) return `${mins}m`;
-  const hrs = Math.floor(mins / 60);
-  const rem = mins % 60;
-  return `${hrs}h${rem > 0 ? ` ${rem}m` : ''}`;
+interface ServiceStatus {
+  name: string;
+  ok: boolean;
 }
 
 export function StatusFooter({ connected }: { connected: boolean }) {
-  const [health, setHealth] = useState<HealthData | null>(null);
+  const [services, setServices] = useState<ServiceStatus[]>([]);
 
   useEffect(() => {
-    const check = () => {
-      fetch(`${BASE_URL}/health`)
-        .then(r => r.json())
-        .then(setHealth)
-        .catch(() => setHealth(null));
+    const check = async () => {
+      try {
+        // Hit sigil's health endpoint which gives us basic info
+        const r = await fetch(`${BASE_URL}/health`);
+        const data = await r.json();
+        const results: ServiceStatus[] = [
+          { name: 'sigil', ok: data.healthy },
+        ];
+
+        // Check cortex
+        try {
+          const cortex = await fetch(`${BASE_URL}/sigil/health-services`, {
+            credentials: 'include',
+            signal: AbortSignal.timeout(5000),
+          });
+          if (cortex.ok) {
+            const svc = await cortex.json();
+            results.push(...svc);
+          }
+        } catch { /* no service health endpoint yet */ }
+
+        setServices(results);
+      } catch {
+        setServices([{ name: 'sigil', ok: false }]);
+      }
     };
     check();
     const interval = setInterval(check, 30_000);
@@ -34,17 +43,18 @@ export function StatusFooter({ connected }: { connected: boolean }) {
   }, []);
 
   return (
-    <div className="px-4 py-1.5 border-t border-border/15 flex items-center gap-3 text-[9px] text-muted-foreground/30 tabular-nums">
-      <span className={connected ? 'text-[var(--sigil-ok)]/40' : 'text-[var(--sigil-error)]/40'}>
-        {connected ? '● connected' : '○ disconnected'}
-      </span>
-      {health && (
-        <>
-          <span>up {formatUptime(health.uptime)}</span>
-          <span>{health.clients} client{health.clients !== 1 ? 's' : ''}</span>
-        </>
+    <div className="px-4 py-1.5 border-t border-border/15 flex items-center gap-2 text-[9px] tabular-nums">
+      {services.map(s => (
+        <span key={s.name} className={s.ok ? 'text-[var(--sigil-ok)]/40' : 'text-[var(--sigil-error)]/50'}>
+          {s.ok ? '●' : '○'} {s.name}
+        </span>
+      ))}
+      {services.length === 0 && (
+        <span className={connected ? 'text-[var(--sigil-ok)]/40' : 'text-[var(--sigil-error)]/40'}>
+          {connected ? '● connected' : '○ disconnected'}
+        </span>
       )}
-      <span className="ml-auto">sigil v0.1</span>
+      <span className="ml-auto text-muted-foreground/20">sigil v0.1</span>
     </div>
   );
 }

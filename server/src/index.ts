@@ -309,6 +309,67 @@ app.delete('/sigil/notifications', requireAuth, (_req, res) => {
   res.json({ ok: true, cleared: pruned });
 });
 
+// ─── Live service health (auto-polls, dashboard footer shows result) ────────
+let cachedServiceHealth: { name: string; ok: boolean }[] = [];
+
+async function pollServiceHealth(): Promise<void> {
+  const results: { name: string; ok: boolean }[] = [];
+
+  // Cortex
+  const cortexUrl = process.env.CORTEX_API_URL ?? process.env.SIGIL_CORTEX_URL ?? '';
+  if (cortexUrl) {
+    try {
+      const r = await fetch(`${cortexUrl}/health`, { signal: AbortSignal.timeout(5000) });
+      results.push({ name: 'cortex', ok: r.ok });
+    } catch {
+      results.push({ name: 'cortex', ok: false });
+    }
+  }
+
+  // Webhook listener
+  if (WEBHOOK_URL) {
+    try {
+      const url = WEBHOOK_URL.replace('/hooks/trigger', '/health');
+      const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      results.push({ name: 'webhook', ok: r.ok });
+    } catch {
+      results.push({ name: 'webhook', ok: false });
+    }
+  }
+
+  cachedServiceHealth = results;
+
+  // If something went down, auto-publish a warning
+  for (const svc of results) {
+    if (!svc.ok) {
+      // Check if we already published a warning for this recently
+      const recent = store.getRecent(10);
+      const hasRecent = recent.some(n =>
+        n.type === 'warning' && n.message.includes(svc.name) && (Math.floor(Date.now() / 1000) - n.time) < 300
+      );
+      if (!hasRecent) {
+        pubsub.publish({
+          id: PubSub.messageId(),
+          topic: 'sigil-health',
+          time: Math.floor(Date.now() / 1000),
+          expires: Math.floor(Date.now() / 1000) + 3600,
+          type: 'warning',
+          title: `${svc.name} is down`,
+          message: `${svc.name} health check failed`,
+        });
+      }
+    }
+  }
+}
+
+// Poll every 30s
+setInterval(pollServiceHealth, 30_000);
+pollServiceHealth(); // initial
+
+app.get('/sigil/health-services', requireDashboardAuth, (_req, res) => {
+  res.json(cachedServiceHealth);
+});
+
 // ─── Health ─────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
   res.json({
@@ -380,14 +441,31 @@ function executeCommand(command: string, project?: string): void {
 
   if (command === 'start' && AGENT_RUNNER) {
     // Spawn agent session via agent-runner
-    const [cmd, ...args] = AGENT_RUNNER.split(' ');
+    const parts = AGENT_RUNNER.split(' ');
+    const cmd = parts[0];
+    const baseArgs = parts.slice(1);
     const prompt = `You are starting a ${project ?? 'general'} session. Check session-state.md for your current assignment and begin working.`;
-    const child = spawn(cmd, [...args, '--prompt', prompt, '--max-turns', '40', '--cwd', PROJECT_ROOT], {
+    const allArgs = [...baseArgs, '--prompt', prompt, '--max-turns', '40', '--cwd', PROJECT_ROOT];
+
+    const child = spawn(cmd, allArgs, {
       env: { ...process.env },
+      cwd: PROJECT_ROOT,
       detached: true,
       stdio: 'ignore',
     });
     child.unref();
+    child.on('error', (err) => {
+      pubsub.publish({
+        id: PubSub.messageId(),
+        topic: 'sigil-commands',
+        time: Math.floor(Date.now() / 1000),
+        expires: Math.floor(Date.now() / 1000) + DEFAULT_TTL,
+        type: 'error',
+        title: 'Session spawn failed',
+        message: err.message,
+        project,
+      });
+    });
 
     pubsub.publish({
       id: PubSub.messageId(),
@@ -583,8 +661,7 @@ function buildContextCommands(
     }
   }
 
-  // Always show health check
-  cmds.push({ label: 'Health', command: 'health', icon: '💊' });
+  // Health is auto-polled now — no button needed
 
   // Add any non-start, non-health commands from config (custom ones)
   for (const cmd of commands) {
