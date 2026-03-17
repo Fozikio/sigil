@@ -634,30 +634,40 @@ function autoActions(message: string, type: string): SigilMessage['actions'] {
     return [
       { gesture: '👍', label: 'Approve', action: 'approve' },
       { gesture: '👎', label: 'Reject', action: 'reject' },
+      { gesture: '⏭', label: 'Skip', action: 'skip' },
       { gesture: '👀', label: 'Details', action: 'detail' },
     ];
   }
   if (lower.includes('stale') || lower.includes('heartbeat') || lower.includes('down') || lower.includes('restart')) {
     return [
       { gesture: '🔄', label: 'Restart', action: 'restart' },
-      { gesture: '✋', label: 'Ignore', action: 'dismiss' },
+      { gesture: '⏸', label: 'Defer', action: 'defer' },
     ];
   }
   if (lower.includes('fail') || lower.includes('error') || lower.includes('crash')) {
     return [
       { gesture: '🔄', label: 'Retry', action: 'retry' },
-      { gesture: '👀', label: 'Investigate', action: 'detail' },
+      { gesture: '⏭', label: 'Move on', action: 'skip' },
+      { gesture: '👀', label: 'Details', action: 'detail' },
     ];
   }
   if (lower.includes('cost') || lower.includes('budget') || lower.includes('limit')) {
     return [
-      { gesture: '✋', label: 'Stop', action: 'pause_all' },
-      { gesture: '👀', label: 'Details', action: 'detail' },
+      { gesture: '✋', label: 'Pause', action: 'pause_all' },
+      { gesture: '⏭', label: 'Continue', action: 'approve' },
     ];
   }
-  // Generic warning/error — at least give investigate
+  if (lower.includes('stuck') || lower.includes('blocked') || lower.includes('waiting')) {
+    return [
+      { gesture: '👍', label: 'Go ahead', action: 'approve' },
+      { gesture: '⏭', label: 'Move on', action: 'skip' },
+      { gesture: '⏸', label: 'Pause', action: 'pause_all' },
+    ];
+  }
+  // Generic warning/error
   return [
-    { gesture: '👀', label: 'Investigate', action: 'detail' },
+    { gesture: '👀', label: 'Details', action: 'detail' },
+    { gesture: '⏭', label: 'Move on', action: 'skip' },
   ];
 }
 
