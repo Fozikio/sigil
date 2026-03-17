@@ -209,7 +209,7 @@ app.post('/sigil/gesture', requireDashboardAuth, (req, res) => {
 });
 
 // ─── Command (dashboard dispatches action) ──────────────────────────────────
-app.post('/sigil/command', requireAuth, async (req, res) => {
+app.post('/sigil/command', requireDashboardAuth, async (req, res) => {
   const body = req.body as CommandRequest;
   if (!body.command) {
     res.status(400).json({ error: 'command required' });
