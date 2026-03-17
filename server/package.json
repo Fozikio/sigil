@@ -15,16 +15,18 @@
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
+    "cookie-parser": "^1.4.7",
     "express": "^4.21.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
+    "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
     "@types/ws": "^8.18.0",
-    "typescript": "^5.7.0",
-    "tsx": "^4.19.0"
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
   },
   "license": "Apache-2.0",
   "author": "Fozikio <hello@fozikio.com>",

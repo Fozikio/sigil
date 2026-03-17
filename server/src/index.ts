@@ -3,6 +3,7 @@
 // No bridge. No middleware layer. Agents POST, humans tap, signals flow.
 
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { existsSync } from 'fs';
@@ -45,6 +46,7 @@ let commands = [...DEFAULT_COMMANDS];
 
 const app = express();
 app.use(express.json({ limit: '16kb' }));
+app.use(cookieParser());
 app.set('trust proxy', true);
 
 // ─── Auth middleware (optional) ─────────────────────────────────────────────
@@ -65,8 +67,43 @@ app.use((_req, res, next) => {
   next();
 });
 
+// ─── Dashboard auth (protects UI, SSE, status, gestures) ───────────────────
+const DASHBOARD_PASSWORD = process.env.SIGIL_DASHBOARD_PASSWORD ?? '';
+
+function requireDashboardAuth(req: express.Request, res: express.Response, next: express.NextFunction): void {
+  if (!DASHBOARD_PASSWORD) return next(); // No password = open access
+
+  // Check cookie
+  if (req.cookies?.sigil_auth === DASHBOARD_PASSWORD) return next();
+
+  // Check query param (for SSE, which can't send custom headers)
+  if (req.query.token === DASHBOARD_PASSWORD) return next();
+
+  // Check header
+  const token = req.headers['x-sigil-token'] as string;
+  if (token === DASHBOARD_PASSWORD) return next();
+
+  res.status(401).json({ error: 'unauthorized' });
+}
+
+// Login endpoint — sets auth cookie
+app.post('/sigil/login', express.urlencoded({ extended: false }), (req, res) => {
+  const password = (req.body as { password?: string }).password ?? '';
+  if (!DASHBOARD_PASSWORD || password === DASHBOARD_PASSWORD) {
+    res.cookie('sigil_auth', DASHBOARD_PASSWORD, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    });
+    res.json({ ok: true });
+  } else {
+    res.status(401).json({ error: 'wrong password' });
+  }
+});
+
 // ─── SSE stream (dashboard subscribes here) ─────────────────────────────────
-app.get('/events', (_req, res) => {
+app.get('/events', requireDashboardAuth, (_req, res) => {
   pubsub.subscribeSSE(res);
 });
 
@@ -106,7 +143,7 @@ app.post('/publish', requireAuth, (req, res) => {
 });
 
 // ─── Status (dashboard polls or SSE inits from here) ────────────────────────
-app.get('/sigil/status', (_req, res) => {
+app.get('/sigil/status', requireDashboardAuth, (_req, res) => {
   const activeSessions = sessions.getAll();
   const pendingApprovals = store.getPendingApprovals();
 
@@ -123,7 +160,7 @@ app.get('/sigil/status', (_req, res) => {
 });
 
 // ─── Gesture (human responds to approval) ───────────────────────────────────
-app.post('/sigil/gesture', (req, res) => {
+app.post('/sigil/gesture', requireDashboardAuth, (req, res) => {
   const body = req.body as GestureRequest;
   if (!body.action || !body.message_id) {
     res.status(400).json({ error: 'action and message_id required' });
@@ -266,8 +303,8 @@ app.post('/sigil/webhook', requireAuth, (req, res) => {
 // ─── Notification management ────────────────────────────────────────────────
 
 // Dismiss/archive a notification
-app.delete('/sigil/notifications/:id', (req, res) => {
-  store.resolve(req.params.id);
+app.delete('/sigil/notifications/:id', requireDashboardAuth, (req, res) => {
+  store.resolve(req.params.id as string);
   res.json({ ok: true });
 });
 
