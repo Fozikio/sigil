@@ -127,57 +127,86 @@ app.post('/sigil/gesture', (req, res) => {
   // Resolve the pending approval
   store.resolve(body.message_id);
 
-  // Publish the gesture as a message so agents can subscribe
-  const gestureMsg: SigilMessage = {
+  // Webhook forwarding — gestures can trigger actions
+  if (WEBHOOK_URL) {
+    webhookPost(WEBHOOK_URL, {
+      type: 'gesture',
+      action: body.action,
+      message_id: body.message_id,
+      responder: body.responder ?? 'dashboard',
+      // Pass the original message context so the webhook handler knows what was approved/rejected
+      prompt: body.action === 'approve' ? 'Approved via Sigil dashboard'
+            : body.action === 'reject' ? 'Rejected via Sigil dashboard'
+            : body.action === 'retry' ? 'Retry requested via Sigil dashboard'
+            : `Gesture: ${body.action}`,
+    }).catch(() => {});
+  }
+
+  // Publish feedback so dashboard shows the action was taken
+  const feedbackMsg: SigilMessage = {
     id: PubSub.messageId(),
     topic: 'sigil-gestures',
     time: Math.floor(Date.now() / 1000),
     expires: Math.floor(Date.now() / 1000) + DEFAULT_TTL,
-    type: 'command_result',
-    message: JSON.stringify({
-      action: body.action,
-      message_id: body.message_id,
-      responder: body.responder ?? 'dashboard',
-      timestamp: new Date().toISOString(),
-    }),
+    type: 'success',
+    message: `${body.action} → ${body.message_id.slice(0, 8)}`,
+    title: `Gesture: ${body.action}`,
   };
-  pubsub.publish(gestureMsg);
-
-  // Webhook forwarding
-  if (WEBHOOK_URL) {
-    webhookPost(WEBHOOK_URL, { type: 'gesture', ...body }).catch(() => {});
-  }
+  pubsub.publish(feedbackMsg);
 
   res.json({ ok: true, action: body.action });
 });
 
 // ─── Command (dashboard dispatches action) ──────────────────────────────────
-app.post('/sigil/command', requireAuth, (req, res) => {
+app.post('/sigil/command', requireAuth, async (req, res) => {
   const body = req.body as CommandRequest;
   if (!body.command) {
     res.status(400).json({ error: 'command required' });
     return;
   }
 
-  // Publish command as a message so agents can subscribe
-  const cmdMsg: SigilMessage = {
+  const now = Math.floor(Date.now() / 1000);
+
+  // Execute the command and publish result
+  let resultMsg: string;
+  let resultType: SigilMessage['type'] = 'info';
+
+  try {
+    if (WEBHOOK_URL) {
+      // Forward to webhook listener for execution
+      await webhookPost(WEBHOOK_URL, {
+        type: 'command',
+        command: body.command,
+        project: body.project,
+        prompt: body.command === 'start'
+          ? `Start a ${body.project ?? 'general'} session`
+          : body.command === 'health'
+            ? 'Run a health check on all services'
+            : `Execute command: ${body.command}`,
+      });
+      resultMsg = `Command "${body.command}" dispatched${body.project ? ` for ${body.project}` : ''}`;
+      resultType = 'success';
+    } else {
+      resultMsg = `Command "${body.command}" received but no webhook configured — set SIGIL_WEBHOOK_URL`;
+      resultType = 'warning';
+    }
+  } catch {
+    resultMsg = `Failed to dispatch command "${body.command}"`;
+    resultType = 'error';
+  }
+
+  // Publish result as notification so dashboard shows feedback
+  const cmdResult: SigilMessage = {
     id: PubSub.messageId(),
     topic: 'sigil-commands',
-    time: Math.floor(Date.now() / 1000),
-    expires: Math.floor(Date.now() / 1000) + DEFAULT_TTL,
-    type: 'info',
-    message: JSON.stringify({
-      command: body.command,
-      project: body.project,
-      timestamp: new Date().toISOString(),
-    }),
+    time: now,
+    expires: now + DEFAULT_TTL,
+    type: resultType,
+    title: `Command: ${body.command}`,
+    message: resultMsg,
+    project: body.project,
   };
-  pubsub.publish(cmdMsg);
-
-  // Webhook forwarding
-  if (WEBHOOK_URL) {
-    webhookPost(WEBHOOK_URL, { type: 'command', ...body }).catch(() => {});
-  }
+  pubsub.publish(cmdResult);
 
   res.json({ ok: true, command: body.command });
 });

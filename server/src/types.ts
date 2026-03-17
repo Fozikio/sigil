@@ -42,6 +42,9 @@ export interface GestureRequest {
 export interface CommandRequest {
   command: string;
   project?: string;
+  prompt?: string;  // Custom prompt for agent sessions
+  model?: string;   // Model override (opus, sonnet, etc.)
+  target?: string;  // Where to run: 'vps', 'local', 'cloud'
 }
 
 export interface CommandButton {
