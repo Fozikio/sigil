@@ -82,6 +82,12 @@ export class MessageStore {
     return result.changes;
   }
 
+  pruneAll(): number {
+    const result = this.db.prepare(`UPDATE messages SET expires = ? WHERE expires > ?`)
+      .run(Math.floor(Date.now() / 1000) - 1, Math.floor(Date.now() / 1000));
+    return result.changes;
+  }
+
   close(): void {
     this.db.close();
   }

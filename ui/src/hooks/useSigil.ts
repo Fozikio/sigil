@@ -55,6 +55,8 @@ export interface SigilState {
 export function useSigil(): SigilState & {
   sendCommand: (command: string, project?: string) => Promise<void>;
   sendGesture: (messageId: string, action: string) => Promise<void>;
+  dismissNotification: (id: string) => Promise<void>;
+  clearAll: () => Promise<void>;
 } {
   const [connected, setConnected] = useState(false);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
@@ -151,8 +153,18 @@ export function useSigil(): SigilState & {
         responder: "dashboard",
       }),
     });
-    // Remove from pending approvals locally
     setPendingApprovals((prev) => prev.filter((p) => p.id !== messageId));
+  }, []);
+
+  const dismissNotification = useCallback(async (id: string) => {
+    await fetch(`${BASE_URL}/sigil/notifications/${id}`, { method: "DELETE" });
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  }, []);
+
+  const clearAll = useCallback(async () => {
+    await fetch(`${BASE_URL}/sigil/notifications`, { method: "DELETE" });
+    setNotifications([]);
+    setPendingApprovals([]);
   }, []);
 
   return {
@@ -163,5 +175,7 @@ export function useSigil(): SigilState & {
     commands,
     sendCommand,
     sendGesture,
+    dismissNotification,
+    clearAll,
   };
 }

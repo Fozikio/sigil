@@ -5,6 +5,7 @@ import type { SigilMessage } from "@/hooks/useSigil";
 interface Props {
   notifications: SigilMessage[];
   onGesture: (messageId: string, action: string) => Promise<void>;
+  onDismiss: (id: string) => Promise<void>;
 }
 
 const typeConfig: Record<string, { label: string; color: string; border: string; bg: string }> = {
@@ -29,7 +30,7 @@ function formatAge(unix: number): string {
   return `${hrs}h`;
 }
 
-export function NotificationFeed({ notifications, onGesture }: Props) {
+export function NotificationFeed({ notifications, onGesture, onDismiss }: Props) {
   if (notifications.length === 0) {
     return (
       <div className="flex-1 min-h-0 flex items-center justify-center">
@@ -74,8 +75,17 @@ export function NotificationFeed({ notifications, onGesture }: Props) {
                   </span>
                 )}
 
-                <span className="ml-auto text-muted-foreground/25 tabular-nums text-[9px]">
-                  {formatAge(n.time)}
+                <span className="ml-auto flex items-center gap-2">
+                  <span className="text-muted-foreground/25 tabular-nums text-[9px]">
+                    {formatAge(n.time)}
+                  </span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDismiss(n.id); }}
+                    className="text-muted-foreground/20 hover:text-muted-foreground/60 transition-colors text-[10px]"
+                    title="Dismiss"
+                  >
+                    ×
+                  </button>
                 </span>
               </div>
 

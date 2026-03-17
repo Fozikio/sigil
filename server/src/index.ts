@@ -263,6 +263,20 @@ app.post('/sigil/webhook', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// ─── Notification management ────────────────────────────────────────────────
+
+// Dismiss/archive a notification
+app.delete('/sigil/notifications/:id', (req, res) => {
+  store.resolve(req.params.id);
+  res.json({ ok: true });
+});
+
+// Clear all notifications
+app.delete('/sigil/notifications', requireAuth, (_req, res) => {
+  const pruned = store.pruneAll();
+  res.json({ ok: true, cleared: pruned });
+});
+
 // ─── Health ─────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
   res.json({

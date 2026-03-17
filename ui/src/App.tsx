@@ -8,7 +8,7 @@ export default function App() {
 
   return (
     <div className="h-dvh flex flex-col bg-background text-foreground sigil-scanlines">
-      {/* Header bar — connection status + brand */}
+      {/* Header */}
       <header className="px-4 py-2.5 flex items-center justify-between border-b border-border/50">
         <div className="flex items-center gap-2.5">
           <div className={`h-1.5 w-1.5 rounded-full ${
@@ -24,20 +24,26 @@ export default function App() {
               {sigil.sessions.length} active
             </span>
           )}
-          <span>{sigil.notifications.length} msg</span>
+          {sigil.notifications.length > 0 && (
+            <button
+              onClick={sigil.clearAll}
+              className="hover:text-foreground transition-colors"
+              title="Clear all notifications"
+            >
+              {sigil.notifications.length} msg · clear
+            </button>
+          )}
         </div>
       </header>
 
-      {/* Sessions strip — only shows when agents are running */}
       <StatusPanel sessions={sigil.sessions} />
 
-      {/* Notification feed — the main content area */}
       <NotificationFeed
         notifications={sigil.notifications}
         onGesture={sigil.sendGesture}
+        onDismiss={sigil.dismissNotification}
       />
 
-      {/* Command panel — bottom action bar */}
       <CommandPanel
         commands={sigil.commands}
         onCommand={sigil.sendCommand}
