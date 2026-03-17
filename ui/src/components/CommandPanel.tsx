@@ -15,42 +15,53 @@ interface Props {
   onCommand: (command: string, project?: string) => Promise<void>;
 }
 
-// Default commands shown when bridge hasn't connected yet
 const fallbackCommands: CommandButton[] = [
-  { label: "Health Check", command: "health", icon: "\u{1F48A}" },
-  { label: "Pause All", command: "pause_all", icon: "\u270B", confirm: true },
+  { label: "Health", command: "health", icon: "\u{1F48A}" },
+  { label: "Pause", command: "pause_all", icon: "\u270B", confirm: true },
 ];
 
 export function CommandPanel({ commands, onCommand }: Props) {
   const [confirmTarget, setConfirmTarget] = useState<CommandButton | null>(null);
+  const [executing, setExecuting] = useState<string | null>(null);
   const cmds = commands.length > 0 ? commands : fallbackCommands;
 
-  function handleClick(cmd: CommandButton) {
+  async function handleClick(cmd: CommandButton) {
     if (cmd.confirm) {
       setConfirmTarget(cmd);
       return;
     }
-    onCommand(cmd.command, cmd.project);
+    setExecuting(cmd.command);
+    await onCommand(cmd.command, cmd.project);
+    setTimeout(() => setExecuting(null), 1000);
   }
 
-  function confirmAction() {
+  async function confirmAction() {
     if (confirmTarget) {
-      onCommand(confirmTarget.command, confirmTarget.project);
+      setExecuting(confirmTarget.command);
+      await onCommand(confirmTarget.command, confirmTarget.project);
+      setTimeout(() => setExecuting(null), 1000);
     }
     setConfirmTarget(null);
   }
 
   return (
     <>
-      <div className="px-3 pb-3 pt-2 border-t border-border">
-        <div className="grid grid-cols-3 gap-2">
+      <div className="px-4 pb-4 pt-2 border-t border-border/50 bg-[var(--sigil-surface)]">
+        <div className="flex gap-2 overflow-x-auto">
           {cmds.map((cmd) => (
             <Button
               key={cmd.label}
-              variant={cmd.confirm ? "destructive" : "default"}
+              variant={cmd.confirm ? "destructive" : "outline"}
               size="sm"
-              className="text-xs h-9"
+              className={`text-[11px] h-8 px-3 shrink-0 border-border/50 ${
+                executing === cmd.command
+                  ? "text-[var(--sigil-ok)] border-[var(--sigil-ok)]"
+                  : cmd.confirm
+                    ? ""
+                    : "hover:border-[var(--sigil-ok)] hover:text-[var(--sigil-ok)]"
+              } transition-colors`}
               onClick={() => handleClick(cmd)}
+              disabled={executing === cmd.command}
             >
               {cmd.icon ? `${cmd.icon} ` : ""}{cmd.label}
             </Button>
@@ -62,19 +73,31 @@ export function CommandPanel({ commands, onCommand }: Props) {
         open={confirmTarget !== null}
         onOpenChange={(open) => !open && setConfirmTarget(null)}
       >
-        <DialogContent className="max-w-xs">
+        <DialogContent className="max-w-xs bg-[var(--sigil-surface-raised)] border-[var(--sigil-error)]/30">
           <DialogHeader>
-            <DialogTitle>Confirm: {confirmTarget?.label}</DialogTitle>
-            <DialogDescription>
-              This action cannot be undone. Are you sure?
+            <DialogTitle className="text-sm font-medium">
+              {confirmTarget?.icon} {confirmTarget?.label}
+            </DialogTitle>
+            <DialogDescription className="text-[11px]">
+              This will execute immediately. Confirm?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setConfirmTarget(null)}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-[11px] h-8"
+              onClick={() => setConfirmTarget(null)}
+            >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={confirmAction}>
-              Confirm
+            <Button
+              variant="destructive"
+              size="sm"
+              className="text-[11px] h-8"
+              onClick={confirmAction}
+            >
+              Execute
             </Button>
           </DialogFooter>
         </DialogContent>

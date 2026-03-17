@@ -1,16 +1,21 @@
-import { Card, CardContent } from "@/components/ui/card";
 import type { AgentSession } from "@/hooks/useSigil";
 
 interface Props {
   sessions: AgentSession[];
 }
 
-const statusDot: Record<string, string> = {
-  active: "bg-emerald-500",
-  idle: "bg-blue-500",
-  blocked: "bg-amber-500",
-  completing: "bg-purple-500",
-  stale: "bg-red-500",
+const statusColor: Record<string, string> = {
+  active: "bg-[var(--sigil-ok)]",
+  idle: "bg-[var(--sigil-info)]",
+  blocked: "bg-[var(--sigil-warn)]",
+  completing: "bg-[var(--sigil-cmd)]",
+  stale: "bg-[var(--sigil-error)]",
+};
+
+const statusGlow: Record<string, string> = {
+  active: "sigil-glow-ok",
+  blocked: "sigil-glow-warn",
+  stale: "sigil-glow-error",
 };
 
 function formatElapsed(startedAt: number): string {
@@ -20,38 +25,41 @@ function formatElapsed(startedAt: number): string {
   if (min < 60) return `${min}m`;
   const hrs = Math.floor(min / 60);
   const rem = min % 60;
-  return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
+  return rem > 0 ? `${hrs}h${rem}m` : `${hrs}h`;
 }
 
 export function StatusPanel({ sessions }: Props) {
   if (sessions.length === 0) return null;
 
   return (
-    <div className="px-3 pt-2 pb-1">
-      <div className="grid grid-cols-2 gap-2">
-        {sessions.map((s) => (
-          <Card key={s.session_id} className="py-2 px-3 gap-0">
-            <CardContent className="p-0 space-y-0.5">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`inline-block h-2 w-2 rounded-full ${statusDot[s.status] ?? "bg-zinc-500"}`}
-                />
-                <span className="text-sm font-medium text-foreground">
-                  {s.project || "session"}
-                </span>
-                <span className="ml-auto text-[11px] text-muted-foreground font-mono">
-                  {formatElapsed(s.started_at)}
-                </span>
-              </div>
-              <div className="flex items-center gap-3 pl-4 text-[11px] text-muted-foreground font-mono">
-                <span>{s.tool_calls} calls</span>
-                {s.model && <span>{s.model}</span>}
-                <span className="ml-auto">{s.status}</span>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+    <div className="border-b border-border/50">
+      {sessions.map((s) => (
+        <div
+          key={s.session_id}
+          className="flex items-center gap-3 px-4 py-2 text-[11px] hover:bg-[var(--sigil-surface-raised)] transition-colors"
+        >
+          {/* Status indicator */}
+          <div className={`h-2 w-2 rounded-full ${statusColor[s.status] ?? "bg-zinc-600"} ${
+            s.status === "active" ? "sigil-pulse" : ""
+          } ${statusGlow[s.status] ?? ""}`} />
+
+          {/* Project name */}
+          <span className="font-medium text-foreground min-w-[60px]">
+            {s.project || "session"}
+          </span>
+
+          {/* Stats */}
+          <span className="text-muted-foreground">{s.tool_calls} calls</span>
+          {s.model && (
+            <span className="text-muted-foreground hidden sm:inline">{s.model}</span>
+          )}
+
+          {/* Elapsed time — right aligned */}
+          <span className="ml-auto text-muted-foreground tabular-nums">
+            {formatElapsed(s.started_at)}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }

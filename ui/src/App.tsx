@@ -7,26 +7,37 @@ export default function App() {
   const sigil = useSigil();
 
   return (
-    <div className="h-dvh flex flex-col bg-background text-foreground">
-      <header className="px-3 pt-3 pb-1 flex items-center justify-between">
-        <h1 className="text-sm font-mono font-semibold tracking-wide text-muted-foreground uppercase">
-          Sigil
-        </h1>
-        <span
-          className={`inline-block h-2 w-2 rounded-full ${
-            sigil.connected ? "bg-emerald-500" : "bg-red-500"
-          }`}
-          title={sigil.connected ? "Connected" : "Disconnected"}
-        />
+    <div className="h-dvh flex flex-col bg-background text-foreground sigil-scanlines">
+      {/* Header bar — connection status + brand */}
+      <header className="px-4 py-2.5 flex items-center justify-between border-b border-border/50">
+        <div className="flex items-center gap-2.5">
+          <div className={`h-1.5 w-1.5 rounded-full ${
+            sigil.connected ? "bg-[var(--sigil-ok)] sigil-glow-ok" : "bg-[var(--sigil-error)] sigil-glow-error"
+          }`} />
+          <span className="text-[11px] font-semibold tracking-[0.2em] uppercase text-muted-foreground">
+            Sigil
+          </span>
+        </div>
+        <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+          {sigil.sessions.length > 0 && (
+            <span className="text-[var(--sigil-ok)]">
+              {sigil.sessions.length} active
+            </span>
+          )}
+          <span>{sigil.notifications.length} msg</span>
+        </div>
       </header>
 
+      {/* Sessions strip — only shows when agents are running */}
       <StatusPanel sessions={sigil.sessions} />
 
+      {/* Notification feed — the main content area */}
       <NotificationFeed
         notifications={sigil.notifications}
         onGesture={sigil.sendGesture}
       />
 
+      {/* Command panel — bottom action bar */}
       <CommandPanel
         commands={sigil.commands}
         onCommand={sigil.sendCommand}
