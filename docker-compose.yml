@@ -1,0 +1,49 @@
+services:
+  sigil-server:
+    image: binwiederhier/ntfy
+    command: serve
+    ports:
+      - "8090:80"
+    volumes:
+      - sigil-data:/var/cache/ntfy
+      - ./server/server.yml:/etc/ntfy/server.yml:ro
+    restart: unless-stopped
+    networks:
+      - sigil-net
+
+  sigil-bridge:
+    build: ./bridge
+    ports:
+      - "3848:3848"
+    env_file: .env
+    environment:
+      - SIGIL_URL=http://sigil-server:80
+      - BRIDGE_PORT=3848
+    depends_on:
+      - sigil-server
+    restart: unless-stopped
+    networks:
+      - sigil-net
+
+  webhook:
+    # webhook-listener repo is a sibling of the Fozikio/ directory.
+    # On VPS: clone idapixl/webhook-listener to ../../Services/webhook-listener
+    # relative to this compose file (i.e., D:/Ida-Fozikio/Services/webhook-listener/).
+    # If that path doesn't exist, copy or symlink it before running docker compose up.
+    build: ../../Services/webhook-listener
+    ports:
+      - "3847:3847"
+    env_file: .env
+    environment:
+      - WEBHOOK_PORT=3847
+      - GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/gcp-sa
+    restart: unless-stopped
+    networks:
+      - sigil-net
+
+volumes:
+  sigil-data:
+
+networks:
+  sigil-net:
+    driver: bridge
