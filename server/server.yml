@@ -3,15 +3,11 @@
 
 # Listen on all interfaces (Docker handles port mapping)
 listen-http: ":80"
+base-url: "https://ntfy.idapixl.com"
 
 # SQLite cache for message persistence
 cache-file: /var/cache/ntfy/cache.db
 cache-duration: "24h"
-
-# Attachment settings
-attachment-cache-dir: /var/cache/ntfy/attachments
-attachment-total-size-limit: "100M"
-attachment-file-size-limit: "10M"
 
 # Auth — enable for production, configure users via CLI
 # auth-file: /var/cache/ntfy/user.db
