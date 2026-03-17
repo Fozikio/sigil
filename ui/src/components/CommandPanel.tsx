@@ -8,7 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { CommandButton } from "@/hooks/useBridge";
+import type { CommandButton } from "@/hooks/useSigil";
 
 interface Props {
   commands: CommandButton[];
@@ -17,9 +17,6 @@ interface Props {
 
 // Default commands shown when bridge hasn't connected yet
 const fallbackCommands: CommandButton[] = [
-  { label: "Start PACO", command: "start", project: "paco", icon: "\u{1F680}" },
-  { label: "Start Cortex", command: "start", project: "cortex", icon: "\u{1F9E0}" },
-  { label: "Start Site", command: "start", project: "site", icon: "\u{1F310}" },
   { label: "Health Check", command: "health", icon: "\u{1F48A}" },
   { label: "Pause All", command: "pause_all", icon: "\u270B", confirm: true },
 ];

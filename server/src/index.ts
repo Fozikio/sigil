@@ -25,11 +25,10 @@ const WEBHOOK_SECRET = process.env.SIGIL_WEBHOOK_SECRET ?? '';
 const DEFAULT_TTL = 24 * 60 * 60; // 24 hours
 
 // Default commands — override via POST /sigil/commands or config
-const DEFAULT_COMMANDS: CommandButton[] = [
-  { label: 'Start PACO', command: 'start', project: 'paco', icon: '🚀' },
-  { label: 'Health Check', command: 'health', icon: '💊' },
-  { label: 'Pause All', command: 'pause_all', icon: '✋', confirm: true },
-];
+// Default commands — override via SIGIL_COMMANDS env (JSON array) or POST /sigil/commands
+const DEFAULT_COMMANDS: CommandButton[] = JSON.parse(
+  process.env.SIGIL_COMMANDS ?? '[{"label":"Health Check","command":"health","icon":"💊"},{"label":"Pause All","command":"pause_all","icon":"✋","confirm":true}]'
+);
 
 // ─── Init ───────────────────────────────────────────────────────────────────
 // Ensure data directory exists

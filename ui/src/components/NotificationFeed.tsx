@@ -2,10 +2,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { BridgeNotification } from "@/hooks/useBridge";
+import type { SigilMessage } from "@/hooks/useSigil";
 
 interface Props {
-  notifications: BridgeNotification[];
+  notifications: SigilMessage[];
   onGesture: (messageId: string, action: string) => Promise<void>;
 }
 
@@ -17,6 +17,11 @@ const typeBadge: Record<string, { label: string; className: string }> = {
   approval: { label: "APPROVE", className: "bg-blue-900 text-blue-300 border-blue-700" },
   command_result: { label: "CMD", className: "bg-purple-900 text-purple-300 border-purple-700" },
 };
+
+function formatTime(unix: number): string {
+  const d = new Date(unix * 1000);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
 
 export function NotificationFeed({ notifications, onGesture }: Props) {
   if (notifications.length === 0) {
@@ -30,12 +35,11 @@ export function NotificationFeed({ notifications, onGesture }: Props) {
   return (
     <ScrollArea className="flex-1 min-h-0 px-3">
       <div className="flex flex-col gap-2 pb-2">
-        {notifications.map((n, i) => {
+        {notifications.map((n) => {
           const badge = typeBadge[n.type] ?? typeBadge.info;
-          const key = `${n.type}-${i}`;
 
           return (
-            <Card key={key} className="py-2.5 px-3 gap-0">
+            <Card key={n.id} className="py-2.5 px-3 gap-0">
               <CardContent className="p-0 space-y-1.5">
                 <div className="flex items-center gap-2">
                   <Badge
@@ -44,14 +48,12 @@ export function NotificationFeed({ notifications, onGesture }: Props) {
                   >
                     {badge.label}
                   </Badge>
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    {formatTime(n.time)}
+                  </span>
                   {n.project && (
-                    <span className="text-[11px] text-muted-foreground font-mono">
-                      {n.project}
-                    </span>
-                  )}
-                  {n.enriched?.session_model && (
                     <span className="text-[11px] text-muted-foreground font-mono ml-auto">
-                      {n.enriched.session_model}
+                      {n.project}
                     </span>
                   )}
                 </div>
@@ -74,7 +76,7 @@ export function NotificationFeed({ notifications, onGesture }: Props) {
                         variant="secondary"
                         size="sm"
                         className="h-6 text-xs px-2"
-                        onClick={() => onGesture(`notif-${i}`, action.action)}
+                        onClick={() => onGesture(n.id, action.action)}
                       >
                         {action.gesture} {action.label}
                       </Button>

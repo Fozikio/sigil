@@ -1,10 +1,10 @@
 import { StatusPanel } from "@/components/StatusPanel";
 import { NotificationFeed } from "@/components/NotificationFeed";
 import { CommandPanel } from "@/components/CommandPanel";
-import { useBridge } from "@/hooks/useBridge";
+import { useSigil } from "@/hooks/useSigil";
 
 export default function App() {
-  const bridge = useBridge();
+  const sigil = useSigil();
 
   return (
     <div className="h-dvh flex flex-col bg-background text-foreground">
@@ -14,26 +14,22 @@ export default function App() {
         </h1>
         <span
           className={`inline-block h-2 w-2 rounded-full ${
-            bridge.connected ? "bg-emerald-500" : "bg-red-500"
+            sigil.connected ? "bg-emerald-500" : "bg-red-500"
           }`}
-          title={bridge.connected ? "Connected" : "Disconnected"}
+          title={sigil.connected ? "Connected" : "Disconnected"}
         />
       </header>
 
-      <StatusPanel
-        sessions={bridge.sessions}
-        services={bridge.services}
-        cron={bridge.cron}
-      />
+      <StatusPanel sessions={sigil.sessions} />
 
       <NotificationFeed
-        notifications={bridge.notifications}
-        onGesture={bridge.sendGesture}
+        notifications={sigil.notifications}
+        onGesture={sigil.sendGesture}
       />
 
       <CommandPanel
-        commands={bridge.commands}
-        onCommand={bridge.sendCommand}
+        commands={sigil.commands}
+        onCommand={sigil.sendCommand}
       />
     </div>
   );
