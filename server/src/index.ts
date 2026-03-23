@@ -176,14 +176,21 @@ app.post('/sigil/gesture', requireDashboardAuth, (req, res) => {
     return;
   }
 
+  // Look up the original message to check context before executing commands
+  const originalMsg = store.get(body.message_id);
+
   // Resolve the pending approval
   store.resolve(body.message_id);
 
-  // Actionable gestures trigger real work
-  if (body.action === 'restart') {
-    executeCommand('restart');
-  } else if (body.action === 'retry' || body.action === 'approve') {
-    executeCommand('start');
+  // Only execute session commands for non-daemon approvals
+  // Social daemon handles its own posting via SSE — don't spawn agent sessions for it
+  const isDaemonApproval = originalMsg?.project === 'social-outreach';
+  if (!isDaemonApproval) {
+    if (body.action === 'restart') {
+      executeCommand('restart');
+    } else if (body.action === 'retry' || body.action === 'approve') {
+      executeCommand('start');
+    }
   }
 
   // Publish human-readable feedback

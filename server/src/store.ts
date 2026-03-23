@@ -50,6 +50,11 @@ export class MessageStore {
     );
   }
 
+  get(id: string): SigilMessage | null {
+    const row = this.db.prepare(`SELECT * FROM messages WHERE id = ?`).get(id) as Record<string, unknown> | undefined;
+    return row ? this.rowToMessage(row) : null;
+  }
+
   getByTopic(topic: string, limit = 50): SigilMessage[] {
     const rows = this.db.prepare(`
       SELECT * FROM messages WHERE topic = ? AND expires > ? ORDER BY time DESC LIMIT ?

@@ -23,16 +23,20 @@
     "@types/better-sqlite3": "^7.6.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/express": "^5.0.0",
-    "@types/node": "^22.0.0",
+    "@types/node": "^22.10.0",
     "@types/ws": "^8.18.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   },
-  "license": "Apache-2.0",
+  "license": "MIT",
   "author": "Fozikio <hello@fozikio.com>",
   "repository": {
     "type": "git",
     "url": "https://github.com/Fozikio/sigil.git"
+  },
+  "funding": {
+    "type": "github",
+    "url": "https://github.com/sponsors/idapixl"
   },
   "keywords": [
     "agent",

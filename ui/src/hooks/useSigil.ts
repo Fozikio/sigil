@@ -104,6 +104,14 @@ export function useSigil(): SigilState & {
         if (msg.type === "approval") {
           setPendingApprovals((prev) => [msg, ...prev]);
         }
+
+        // Toast behavior — auto-dismiss success/command_result/gesture feedback after 8s
+        const toastTypes = ["success", "command_result"];
+        if (toastTypes.includes(msg.type) || msg.topic === "sigil-gestures") {
+          setTimeout(() => {
+            setNotifications((prev) => prev.filter((n) => n.id !== msg.id));
+          }, 8000);
+        }
       } catch {
         // Non-JSON SSE message (keepalive, connected event)
       }
@@ -153,7 +161,9 @@ export function useSigil(): SigilState & {
         responder: "dashboard",
       }),
     });
+    // Remove from both pending approvals AND notification feed
     setPendingApprovals((prev) => prev.filter((p) => p.id !== messageId));
+    setNotifications((prev) => prev.filter((n) => n.id !== messageId));
   }, []);
 
   const dismissNotification = useCallback(async (id: string) => {
