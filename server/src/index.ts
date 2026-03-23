@@ -11,9 +11,11 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 
-import { MessageStore } from './store.js';
+import { createSigilDatabase, MessageStore } from './store.js';
 import { PubSub } from './pubsub.js';
 import { SessionTracker } from './sessions.js';
+import { AgentRegistry } from './registry.js';
+import { createRegistryRouter } from './routes/registry.js';
 import type { SigilMessage, GestureRequest, CommandRequest, CommandButton, StatusResponse } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -40,7 +42,9 @@ if (!existsSync(dataDir)) {
   mkdirSync(dataDir, { recursive: true });
 }
 
-const store = new MessageStore(DB_PATH);
+const db = createSigilDatabase(DB_PATH);
+const store = new MessageStore(db);
+const registry = new AgentRegistry(db);
 const pubsub = new PubSub(store);
 const sessions = new SessionTracker();
 let commands = [...DEFAULT_COMMANDS];
@@ -164,6 +168,7 @@ app.get('/sigil/status', requireDashboardAuth, (_req, res) => {
     notifications: store.getRecent(50),
     pending_approvals: pendingApprovals,
     commands: contextCommands,
+    registered_agents: registry.getAll(),
   };
   res.json(resp);
 });
@@ -387,6 +392,9 @@ app.get('/health', (_req, res) => {
   });
 });
 
+// ─── Agent Registry Routes ───────────────────────────────────────────────────
+app.use(createRegistryRouter(registry, requireAuth, requireDashboardAuth));
+
 // ─── Serve dashboard UI (static files from site/) ───────────────────────────
 const sitePath = join(__dirname, '..', 'site');
 if (existsSync(sitePath)) {
@@ -413,6 +421,9 @@ sessions.start();
 
 // Prune expired messages every hour
 setInterval(() => store.prune(), 60 * 60 * 1000);
+
+// Reap stale/dead agents every 60s
+setInterval(() => registry.reap(), 60_000);
 
 server.listen(PORT, () => {
   console.log(`Sigil listening on :${PORT}`);

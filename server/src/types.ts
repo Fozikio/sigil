@@ -60,6 +60,33 @@ export interface StatusResponse {
   notifications: SigilMessage[];
   pending_approvals: SigilMessage[];
   commands: CommandButton[];
+  registered_agents?: RegisteredAgent[];
+}
+
+// ─── Agent Registry ──────────────────────────────────────────────────────────
+
+export interface RegisteredAgent {
+  id: string;
+  agent_id: string;
+  name: string;
+  cortex_url: string | null;
+  namespace: string | null;
+  capabilities: string[];
+  status: 'online' | 'offline' | 'degraded' | 'unknown';
+  version: string | null;
+  metadata: Record<string, unknown>;
+  registered_at: number;
+  last_seen: number;
+}
+
+export interface AgentRegistration {
+  agent_id: string;
+  name: string;
+  cortex_url?: string;
+  namespace?: string;
+  capabilities?: string[];
+  version?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export type SSEClient = {

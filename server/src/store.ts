@@ -4,13 +4,18 @@
 import Database from 'better-sqlite3';
 import type { SigilMessage } from './types.js';
 
+export function createSigilDatabase(dbPath: string): Database.Database {
+  const db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
+  db.pragma('busy_timeout = 5000');
+  return db;
+}
+
 export class MessageStore {
   private db: Database.Database;
 
-  constructor(dbPath: string) {
-    this.db = new Database(dbPath);
-    this.db.pragma('journal_mode = WAL');
-    this.db.pragma('busy_timeout = 5000');
+  constructor(db: Database.Database) {
+    this.db = db;
     this.init();
   }
 
