@@ -2,7 +2,7 @@
 // Messages persist across restarts. Dashboard loads history on connect.
 
 import Database from 'better-sqlite3';
-import type { SigilMessage } from './types.js';
+import type { SigilMessage, ScheduleCard, ScheduleSession, Override } from './types.js';
 
 export function createSigilDatabase(dbPath: string): Database.Database {
   const db = new Database(dbPath);
@@ -117,6 +117,132 @@ export class MessageStore {
       actions: row.actions ? JSON.parse(row.actions as string) : undefined,
       timeout: (row.timeout as string) || undefined,
       fallback: (row.fallback as string) || undefined,
+    };
+  }
+}
+
+// ─── Schedule Store ─────────────────────────────────────────────────────────
+
+export class ScheduleStore {
+  private db: Database.Database;
+
+  constructor(db: Database.Database) {
+    this.db = db;
+    this.init();
+  }
+
+  private init(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS schedule (
+        id TEXT PRIMARY KEY,
+        created_at INTEGER NOT NULL,
+        next_planner INTEGER,
+        status TEXT DEFAULT 'active',
+        sessions TEXT NOT NULL
+      );
+    `);
+  }
+
+  getActive(): ScheduleCard | null {
+    const row = this.db.prepare(
+      `SELECT * FROM schedule WHERE status = 'active' ORDER BY created_at DESC LIMIT 1`
+    ).get() as Record<string, unknown> | undefined;
+    if (!row) return null;
+    return {
+      id: row.id as string,
+      created_at: row.created_at as number,
+      next_planner: row.next_planner as number,
+      status: row.status as ScheduleCard['status'],
+      sessions: JSON.parse(row.sessions as string),
+    };
+  }
+
+  set(card: ScheduleCard): void {
+    // Mark any existing active schedule as completed
+    this.db.prepare(`UPDATE schedule SET status = 'completed' WHERE status = 'active'`).run();
+    this.db.prepare(`
+      INSERT INTO schedule (id, created_at, next_planner, status, sessions)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(card.id, card.created_at, card.next_planner, card.status, JSON.stringify(card.sessions));
+  }
+
+  updateSession(index: number, updates: Partial<ScheduleSession>): ScheduleCard | null {
+    const card = this.getActive();
+    if (!card || index < 0 || index >= card.sessions.length) return null;
+    Object.assign(card.sessions[index], updates);
+    this.db.prepare(`UPDATE schedule SET sessions = ? WHERE id = ?`)
+      .run(JSON.stringify(card.sessions), card.id);
+    return card;
+  }
+
+  updateStatus(status: ScheduleCard['status']): void {
+    this.db.prepare(`UPDATE schedule SET status = ? WHERE status = 'active'`).run(status);
+  }
+}
+
+// ─── Override Store ──────────────────────────────────────────────────────────
+
+export class OverrideStore {
+  private db: Database.Database;
+
+  constructor(db: Database.Database) {
+    this.db = db;
+    this.init();
+  }
+
+  private init(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS overrides (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        seed TEXT,
+        reason TEXT,
+        created_at INTEGER NOT NULL,
+        consumed INTEGER DEFAULT 0
+      );
+    `);
+  }
+
+  getBySeed(seed: string): Override | null {
+    const row = this.db.prepare(
+      `SELECT * FROM overrides WHERE seed = ? AND consumed = 0 ORDER BY created_at DESC LIMIT 1`
+    ).get(seed) as Record<string, unknown> | undefined;
+    return row ? this.rowToOverride(row) : null;
+  }
+
+  getGlobal(): Override | null {
+    const row = this.db.prepare(
+      `SELECT * FROM overrides WHERE type = 'halt' AND consumed = 0 ORDER BY created_at DESC LIMIT 1`
+    ).get() as Record<string, unknown> | undefined;
+    return row ? this.rowToOverride(row) : null;
+  }
+
+  set(override: { type: Override['type']; seed?: string | null; reason?: string | null }): Override {
+    const id = `ovr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const now = Math.floor(Date.now() / 1000);
+    this.db.prepare(`
+      INSERT INTO overrides (id, type, seed, reason, created_at, consumed)
+      VALUES (?, ?, ?, ?, ?, 0)
+    `).run(id, override.type, override.seed ?? null, override.reason ?? null, now);
+    return { id, type: override.type, seed: override.seed ?? null, reason: override.reason ?? null, created_at: now, consumed: false };
+  }
+
+  deleteBySeed(seed: string): void {
+    this.db.prepare(`DELETE FROM overrides WHERE seed = ?`).run(seed);
+  }
+
+  deleteGlobal(): void {
+    this.db.prepare(`DELETE FROM overrides WHERE type = 'halt'`).run();
+  }
+
+  private rowToOverride(row: Record<string, unknown>): Override {
+    return {
+      id: row.id as string,
+      type: row.type as Override['type'],
+      seed: (row.seed as string) || null,
+      reason: (row.reason as string) || null,
+      created_at: row.created_at as number,
+      consumed: (row.consumed as number) === 1,
     };
   }
 }

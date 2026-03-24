@@ -44,12 +44,33 @@ export interface CommandButton {
   confirm?: boolean;
 }
 
+export interface ScheduleSession {
+  seed: string;
+  time: string;
+  time_unix: number;
+  duration_min: number;
+  status: "queued" | "running" | "finished" | "skipped" | "stopped";
+  cost_usd?: number;
+  turns?: number;
+  intent?: string;
+}
+
+export interface ScheduleCard {
+  id: string;
+  created_at: number;
+  next_planner: number;
+  status: "active" | "completed" | "halted";
+  sessions: ScheduleSession[];
+}
+
 export interface SigilState {
   connected: boolean;
   sessions: AgentSession[];
   notifications: SigilMessage[];
   pendingApprovals: SigilMessage[];
   commands: CommandButton[];
+  schedule: ScheduleCard | null;
+  halted: boolean;
 }
 
 export function useSigil(): SigilState & {
@@ -57,12 +78,18 @@ export function useSigil(): SigilState & {
   sendGesture: (messageId: string, action: string) => Promise<void>;
   dismissNotification: (id: string) => Promise<void>;
   clearAll: () => Promise<void>;
+  skipSeed: (seed: string) => Promise<void>;
+  stopSeed: (seed: string, reason?: string) => Promise<void>;
+  haltAll: (reason?: string) => Promise<void>;
+  resumeAll: () => Promise<void>;
 } {
   const [connected, setConnected] = useState(false);
   const [sessions, setSessions] = useState<AgentSession[]>([]);
   const [notifications, setNotifications] = useState<SigilMessage[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<SigilMessage[]>([]);
   const [commands, setCommands] = useState<CommandButton[]>([]);
+  const [schedule, setSchedule] = useState<ScheduleCard | null>(null);
+  const [halted, setHalted] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const initializedRef = useRef(false);
 
@@ -75,6 +102,8 @@ export function useSigil(): SigilState & {
       setNotifications(data.notifications ?? []);
       setPendingApprovals(data.pending_approvals ?? []);
       setCommands(data.commands ?? []);
+      setSchedule(data.schedule ?? null);
+      setHalted(data.halted ?? false);
       initializedRef.current = true;
     } catch {
       // Server not reachable
@@ -103,6 +132,11 @@ export function useSigil(): SigilState & {
         // Track pending approvals
         if (msg.type === "approval") {
           setPendingApprovals((prev) => [msg, ...prev]);
+        }
+
+        // Schedule updates trigger a full status refresh
+        if (msg.topic === "sigil-schedule-update" || msg.topic === "sigil-schedule" || msg.topic === "sigil-override") {
+          loadStatus();
         }
 
         // Toast behavior — auto-dismiss success/command_result/gesture feedback after 8s
@@ -177,15 +211,53 @@ export function useSigil(): SigilState & {
     setPendingApprovals([]);
   }, []);
 
+  const skipSeed = useCallback(async (seed: string) => {
+    await fetch(`${BASE_URL}/sigil/override`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "skip", seed }),
+    });
+    loadStatus();
+  }, [loadStatus]);
+
+  const stopSeed = useCallback(async (seed: string, reason?: string) => {
+    await fetch(`${BASE_URL}/sigil/override`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "stop", seed, reason }),
+    });
+    loadStatus();
+  }, [loadStatus]);
+
+  const haltAll = useCallback(async (reason?: string) => {
+    await fetch(`${BASE_URL}/sigil/override`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "halt", reason }),
+    });
+    loadStatus();
+  }, [loadStatus]);
+
+  const resumeAll = useCallback(async () => {
+    await fetch(`${BASE_URL}/sigil/override/global`, { method: "DELETE" });
+    loadStatus();
+  }, [loadStatus]);
+
   return {
     connected,
     sessions,
     notifications,
     pendingApprovals,
     commands,
+    schedule,
+    halted,
     sendCommand,
     sendGesture,
     dismissNotification,
     clearAll,
+    skipSeed,
+    stopSeed,
+    haltAll,
+    resumeAll,
   };
 }

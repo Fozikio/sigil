@@ -61,6 +61,8 @@ export interface StatusResponse {
   pending_approvals: SigilMessage[];
   commands: CommandButton[];
   registered_agents?: RegisteredAgent[];
+  schedule: ScheduleCard | null;
+  halted: boolean;
 }
 
 // ─── Agent Registry ──────────────────────────────────────────────────────────
@@ -87,6 +89,36 @@ export interface AgentRegistration {
   capabilities?: string[];
   version?: string;
   metadata?: Record<string, unknown>;
+}
+
+// ─── Schedule + Override ─────────────────────────────────────────────────────
+
+export interface ScheduleSession {
+  seed: string;
+  time: string;           // "2:00 PM" (display)
+  time_unix: number;      // for sorting
+  duration_min: number;   // estimated
+  status: 'queued' | 'running' | 'finished' | 'skipped' | 'stopped';
+  cost_usd?: number;
+  turns?: number;
+  intent?: string;        // "Going to fix terminalizer Dependabot alerts"
+}
+
+export interface ScheduleCard {
+  id: string;
+  created_at: number;
+  next_planner: number;
+  status: 'active' | 'completed' | 'halted';
+  sessions: ScheduleSession[];
+}
+
+export interface Override {
+  id: string;
+  type: 'skip' | 'stop' | 'halt';
+  seed: string | null;    // null for global halt
+  reason: string | null;
+  created_at: number;
+  consumed: boolean;
 }
 
 export type SSEClient = {

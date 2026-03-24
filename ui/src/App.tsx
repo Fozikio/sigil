@@ -4,6 +4,7 @@ import { NotificationFeed } from "@/components/NotificationFeed";
 import { CommandPanel } from "@/components/CommandPanel";
 import { StatusFooter } from "@/components/StatusFooter";
 import { LoginGate } from "@/components/LoginGate";
+import { ScheduleTimeline } from "@/components/ScheduleTimeline";
 import { useSigil } from "@/hooks/useSigil";
 
 const BASE_URL = import.meta.env.VITE_SIGIL_URL ?? "";
@@ -76,6 +77,17 @@ function Dashboard() {
       </header>
 
       <StatusPanel sessions={sigil.sessions} />
+
+      {sigil.schedule && sigil.schedule.sessions.length > 0 && (
+        <ScheduleTimeline
+          schedule={sigil.schedule}
+          halted={sigil.halted}
+          onSkip={sigil.skipSeed}
+          onStop={sigil.stopSeed}
+          onHalt={sigil.haltAll}
+          onResume={sigil.resumeAll}
+        />
+      )}
 
       <NotificationFeed
         notifications={sigil.notifications}

@@ -11,12 +11,12 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 
-import { createSigilDatabase, MessageStore } from './store.js';
+import { createSigilDatabase, MessageStore, ScheduleStore, OverrideStore } from './store.js';
 import { PubSub } from './pubsub.js';
 import { SessionTracker } from './sessions.js';
 import { AgentRegistry } from './registry.js';
 import { createRegistryRouter } from './routes/registry.js';
-import type { SigilMessage, GestureRequest, CommandRequest, CommandButton, StatusResponse } from './types.js';
+import type { SigilMessage, GestureRequest, CommandRequest, CommandButton, StatusResponse, ScheduleCard, ScheduleSession } from './types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -44,6 +44,8 @@ if (!existsSync(dataDir)) {
 
 const db = createSigilDatabase(DB_PATH);
 const store = new MessageStore(db);
+const scheduleStore = new ScheduleStore(db);
+const overrideStore = new OverrideStore(db);
 const registry = new AgentRegistry(db);
 const pubsub = new PubSub(store);
 const sessions = new SessionTracker();
@@ -169,6 +171,8 @@ app.get('/sigil/status', requireDashboardAuth, (_req, res) => {
     pending_approvals: pendingApprovals,
     commands: contextCommands,
     registered_agents: registry.getAll(),
+    schedule: scheduleStore.getActive(),
+    halted: overrideStore.getGlobal() !== null,
   };
   res.json(resp);
 });
@@ -304,6 +308,146 @@ app.post('/sigil/webhook', requireAuth, (req, res) => {
     }
   }
 
+  res.json({ ok: true });
+});
+
+// ─── Schedule (planner creates, agents update, dashboard reads) ──────────────
+
+// Create/replace active schedule
+app.post('/sigil/schedule', requireAuth, (req, res) => {
+  const body = req.body as { sessions?: ScheduleSession[]; next_planner?: number };
+  if (!body.sessions || !Array.isArray(body.sessions)) {
+    res.status(400).json({ error: 'sessions array required' });
+    return;
+  }
+  const card: ScheduleCard = {
+    id: `sched-${Date.now()}`,
+    created_at: Math.floor(Date.now() / 1000),
+    next_planner: body.next_planner ?? 0,
+    status: 'active',
+    sessions: body.sessions,
+  };
+  scheduleStore.set(card);
+  pubsub.publish({
+    id: PubSub.messageId(),
+    topic: 'sigil-schedule',
+    time: card.created_at,
+    expires: card.created_at + 24 * 60 * 60,
+    type: 'info',
+    title: 'Schedule updated',
+    message: `${card.sessions.length} sessions planned`,
+  });
+  res.json(card);
+});
+
+// Get current schedule
+app.get('/sigil/schedule', requireAuth, (_req, res) => {
+  const card = scheduleStore.getActive();
+  res.json(card ?? { sessions: [], status: 'completed' });
+});
+
+// Update a session in the schedule (by index)
+app.patch('/sigil/schedule/:index', requireAuth, (req, res) => {
+  const index = parseInt(req.params.index as string, 10);
+  if (isNaN(index)) {
+    res.status(400).json({ error: 'invalid index' });
+    return;
+  }
+  const updates = req.body as Partial<ScheduleSession>;
+  const card = scheduleStore.updateSession(index, updates);
+  if (!card) {
+    res.status(404).json({ error: 'no active schedule or invalid index' });
+    return;
+  }
+  // Broadcast update via SSE so dashboard refreshes
+  pubsub.publish({
+    id: PubSub.messageId(),
+    topic: 'sigil-schedule-update',
+    time: Math.floor(Date.now() / 1000),
+    expires: Math.floor(Date.now() / 1000) + 300,
+    type: 'info',
+    message: JSON.stringify({ index, updates }),
+  });
+  res.json(card);
+});
+
+// ─── Override (human intervention flags) ─────────────────────────────────────
+
+// Create an override (dashboard posts skip/stop/halt)
+app.post('/sigil/override', requireDashboardAuth, (req, res) => {
+  const body = req.body as { type: 'skip' | 'stop' | 'halt'; seed?: string; reason?: string };
+  if (!body.type || !['skip', 'stop', 'halt'].includes(body.type)) {
+    res.status(400).json({ error: 'type must be skip, stop, or halt' });
+    return;
+  }
+  if (body.type !== 'halt' && !body.seed) {
+    res.status(400).json({ error: 'seed required for skip/stop' });
+    return;
+  }
+
+  const override = overrideStore.set({
+    type: body.type,
+    seed: body.type === 'halt' ? null : body.seed,
+    reason: body.reason,
+  });
+
+  // If halt, also update schedule status
+  if (body.type === 'halt') {
+    scheduleStore.updateStatus('halted');
+  }
+
+  // If stop and there's an active schedule, mark that session as stopped
+  if (body.type === 'stop' && body.seed) {
+    const card = scheduleStore.getActive();
+    if (card) {
+      const idx = card.sessions.findIndex(s => s.seed === body.seed && s.status === 'running');
+      if (idx !== -1) {
+        scheduleStore.updateSession(idx, { status: 'stopped' });
+      }
+    }
+  }
+
+  pubsub.publish({
+    id: PubSub.messageId(),
+    topic: 'sigil-override',
+    time: Math.floor(Date.now() / 1000),
+    expires: Math.floor(Date.now() / 1000) + 3600,
+    type: 'warning',
+    title: `Override: ${body.type}`,
+    message: body.type === 'halt'
+      ? 'All sessions halted'
+      : `${body.type} flag set for ${body.seed}${body.reason ? ': ' + body.reason : ''}`,
+  });
+
+  res.json(override);
+});
+
+// Check seed-specific override (run-seed.sh calls this)
+app.get('/sigil/override/:seed', requireAuth, (req, res) => {
+  const seed = req.params.seed as string;
+  if (seed === 'global') {
+    const halt = overrideStore.getGlobal();
+    res.json(halt ?? { type: null });
+    return;
+  }
+  const override = overrideStore.getBySeed(seed);
+  res.json(override ?? { type: null });
+});
+
+// Clear seed override (consumed after reading)
+app.delete('/sigil/override/:seed', requireAuth, (req, res) => {
+  const seed = req.params.seed as string;
+  if (seed === 'global') {
+    overrideStore.deleteGlobal();
+    // Resume schedule if it was halted
+    const card = scheduleStore.getActive();
+    if (card && card.status === 'halted') {
+      scheduleStore.updateStatus('active');
+    }
+    res.json({ ok: true });
+    return;
+  }
+  overrideStore.deleteBySeed(seed);
   res.json({ ok: true });
 });
 
