@@ -21,6 +21,10 @@
     "express": "^4.21.0",
     "ws": "^8.18.0"
   },
+  "overrides": {
+    "path-to-regexp": "0.1.13",
+    "qs": "6.15.2"
+  },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
     "@types/cookie-parser": "^1.4.10",

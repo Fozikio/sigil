@@ -170,52 +170,37 @@ The bridge runs three background monitors:
 
 ## Deployment
 
-### VPS (systemd)
+Sigil ships as a container. Build and run with Docker Compose:
 
 ```bash
-cd bridge
-bash deploy.sh          # builds, syncs to VPS, restarts service
-bash install-service.sh # first-time systemd unit setup
+docker compose up -d --build   # builds server/ (+ bundled UI) and starts the service
 ```
 
-The deploy script builds both bridge and UI, rsyncs to the remote, and restarts the systemd unit.
-
-### Caddy (reverse proxy)
-
-A Caddy snippet is provided in `bridge/caddy-snippet.txt` for routing under a subdomain (`sigil.example.com`) or path-based under the ntfy domain.
+The server image is defined in `server/Dockerfile`; `docker-compose.yml` wires
+up the service, persistent SQLite volume, and ports. Put it behind your reverse
+proxy of choice (Caddy/nginx) for TLS and subdomain routing.
 
 ## Project Structure
 
 ```
 sigil/
-├── server/          # Go ntfy fork (pub/sub + push notifications)
-├── bridge/          # TypeScript bridge server
-│   ├── src/
-│   │   ├── server.ts              # Express app, SSE, route handlers
-│   │   ├── types.ts               # All TypeScript interfaces
-│   │   ├── config.ts              # YAML config loader
-│   │   ├── enrichment.ts          # Message enrichment
-│   │   ├── handlers/
-│   │   │   ├── webhook.ts         # Agent message handler
-│   │   │   ├── gesture.ts         # Human response handler
-│   │   │   └── command.ts         # Command dispatcher
-│   │   ├── monitors/
-│   │   │   ├── heartbeat.ts       # Session liveness tracking
-│   │   │   ├── cost.ts            # Cost ceiling enforcement
-│   │   │   └── timeout.ts         # Approval timeout manager
-│   │   └── integrations/
-│   │       ├── sigil-client.ts    # ntfy HTTP + SSE client
-│   │       ├── cortex.ts          # Cortex API client
-│   │       └── firestore.ts       # Firestore integration
-│   ├── config.example.yaml
-│   ├── deploy.sh
-│   └── install-service.sh
-└── ui/              # React dashboard (Vite + Tailwind + shadcn/ui)
+├── server/              # TypeScript sigil server (Express + SQLite + WS pub/sub)
+│   ├── src/             # routes, SSE, command/gesture handlers, monitors
+│   ├── data/            # SQLite store
+│   ├── site/            # built dashboard UI (served by the server)
+│   ├── Dockerfile
+│   └── package.json
+├── ui/                  # React dashboard source (Vite + Tailwind + shadcn/ui)
+└── docker-compose.yml
 ```
+
+> The earlier Go ntfy fork and standalone TypeScript bridge were replaced by the
+> unified TypeScript server and removed from the tree (recoverable from git history).
 
 ## Status
 
-Early development. Bridge is functional -- heartbeats, commands, ntfy subscription, and cortex integration are wired. Dashboard UI is scaffolded.
+Active. The TypeScript server (pub/sub, gestures, commands, cortex logging) and
+the React dashboard are wired together and deployed via Docker.
 
 Part of the [Fozikio](https://github.com/Fozikio) agent toolkit.
 
