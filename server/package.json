@@ -23,7 +23,7 @@
   },
   "overrides": {
     "path-to-regexp": "0.1.13",
-    "qs": "6.15.2"
+    "qs": "^6.16.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.0",
