@@ -23,7 +23,7 @@
   },
   "overrides": {
     "path-to-regexp": "0.1.13",
-    "qs": "6.16.0",
+    "qs": "^6.16.0",
     "esbuild": "0.28.2"
   },
   "devDependencies": {
